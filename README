@@ -1,0 +1,33 @@
+Running Tests:
+
+The library and tests require ruby 1.9 or higher. Run the tests as:
+
+ruby1.9.1 tests/test_filemanager.rb
+
+Bencoding: ruby gem bencode
+
+
+Ideas:
+
+Use the reactor for the network sockets. Apparently using non-blocking IO for files is useless: http://www.remlab.net/op/nonblock.shtml
+Files are always readable and writable. However the task is paused when reading or writing to a file that needs to be swapped in. So it
+might be worthwhile to do reading and writing in a different thread.
+
+The file io thread would have a queue for requests, and would write responses into a queue as events. The reactor would pick up the events
+which are 'block ready' or 'write complete' (Why write complete?). In the coroutine, the handler would match the event to the io that 
+cared about it and deal with this event.
+
+Current feature:
+
+Need to decide which blocks of peices to request next.
+We must be able to tell which blocks are downloaded, and which are already requested.
+Have a bitmap for completed pieces (that are confirmed to have been written to disk
+and have been checksummed) and one for requested pieces. For the requested pieces,
+we also need a list of outstanding requests that we can timeout and decide to re-request
+after a certain time. 
+
+If we take the union of completed and requested pieces and 
+find all the 0 bits these are the blocks we still need. We can then search the piece bitmaps of the 
+peers that have us unchoked to see which peers have this piece and request it from them.
+
+We also need to determine which pieces are complete so we can update peers with this info.
