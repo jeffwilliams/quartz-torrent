@@ -21,7 +21,7 @@ module QuartzTorrent
       remainder = bit & 0x7
       mask = 0x80 >> remainder
 
-      raise "Bit out of range of bitfield" if quotient >= @data.length
+      raise "Bit #{bit} out of range of bitfield with length #{length}" if quotient >= @data.length
       @data[quotient] |= mask
     end  
 
@@ -30,7 +30,7 @@ module QuartzTorrent
       remainder = bit & 0x7
       mask = ~(0x80 >> remainder)
       
-      raise "Bit out of range of bitfield" if quotient >= @data.length
+      raise "Bit #{bit} out of range of bitfield with length #{length}" if quotient >= @data.length
       @data[quotient] &= mask
     end  
     
@@ -40,7 +40,7 @@ module QuartzTorrent
       remainder = bit & 0x7
       mask = 0x80 >> remainder
     
-      raise "Bit out of range of bitfield" if quotient >= @data.length
+      raise "Bit #{bit} out of range of bitfield with length #{length}" if quotient >= @data.length
       @data[quotient] & mask > 0
     end
 
