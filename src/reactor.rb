@@ -53,6 +53,10 @@ module QuartzTorrent
     def connectError(metainfo, details)
     end
 
+    # Event handler. This is called for events added using addUserEvent to the reactor.
+    def userEvent(event)
+    end
+
     ### Methods not meant to be overridden
     attr_accessor :reactor
 
@@ -331,6 +335,7 @@ module QuartzTorrent
       @listenBacklog = 10
       @eventRead, @eventWrite = IO.pipe
       @currentHandlerCallback = nil
+      @userEvents = []
     end
 
     attr_accessor :listenBacklog
@@ -370,6 +375,12 @@ module QuartzTorrent
       info.readFiberIoFacade.logger = @logger if @logger
       info.state = :connected
       @ioInfo[info.io] = info
+    end
+
+    # Add a generic event. This event will be processed the next pass through the
+    # event loop
+    def addUserEvent(event)
+      @userEvents.push event
     end
 
     # Run event loop
@@ -482,8 +493,10 @@ module QuartzTorrent
         processTimer(timer)
       end
 
+      # 2. Check user events
+      @userEvents.each{ |event| @handler.userEvent event }
 
-      # 2. Call Select. Ignore exception set: apparently this is for OOB data, or terminal things.  
+      # 3. Call Select. Ignore exception set: apparently this is for OOB data, or terminal things.  
       selectResult = nil
       while true
         begin

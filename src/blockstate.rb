@@ -60,7 +60,7 @@ module QuartzTorrent
         isSet = initialPieceBitfield.set?(pieceIndex)
         @blocksPerPiece.times do 
           # The last piece may be a smaller number of blocks.
-          break if blockIndex > @completeBlocks.length
+          break if blockIndex >= @completeBlocks.length
 
           if isSet
             @completeBlocks.set blockIndex
@@ -133,15 +133,14 @@ module QuartzTorrent
       result = []
       rarityOrder.each do |pair|
         pieceIndex = pair[1]
-# NOTE: last piece may have less blocks than others
-        (pieceIndex*@blocksPerPiece).upto(pieceIndex*@blocksPerPiece+@blocksPerPiece-1) do |blockIndex|
-          break if blockIndex >= @numBlocks
+        eachBlockInPiece(pieceIndex) do |blockIndex|
           peersWithPiece = peersHavingPiece[pieceIndex]
           if requestable.set?(blockIndex) && peersWithPiece.size > 0
             # If this is the very last block, then it might be smaller than the rest.
             blockSize = @blockSize
             blockSize = @lastBlockLength if blockIndex == @numBlocks-1
-            result.push BlockInfo.new(pieceIndex, blockIndex*@blockSize, blockSize, peersHavingPiece[pieceIndex], blockIndex)
+            offsetWithinPiece = (blockIndex % @blocksPerPiece)*@blockSize
+            result.push BlockInfo.new(pieceIndex, offsetWithinPiece, blockSize, peersHavingPiece[pieceIndex], blockIndex)
             break if numToReturn && result.size >= numToReturn
           end
         end
@@ -160,19 +159,51 @@ module QuartzTorrent
     end
   end
 
+  # If this block completes the piece and a block is passed, the pieceIndex is yielded to the block.
   def setBlockCompleted(pieceIndex, blockOffset, bool, clearRequested = :clear_requested)
     bi = blockIndexFromPieceAndOffset(pieceIndex, blockOffset)
     @requestedBlocks.clear bi if clearRequested == :clear_requested
     if bool
       @completeBlocks.set bi
+      yield pieceIndex if pieceCompleted?(pieceIndex) && block_given?
     else
       @completeBlocks.clear bi
     end
   end
 
+  def setPieceCompleted(pieceIndex, bool)
+    eachBlockInPiece(pieceIndex) do |blockIndex|
+      if bool
+        @completeBlocks.set blockIndex
+      else
+        @completeBlocks.clear blockIndex
+      end
+    end
+  end
+
   private
+  # Yield to a block each block index in a piece.
+  def eachBlockInPiece(pieceIndex)
+    (pieceIndex*@blocksPerPiece).upto(pieceIndex*@blocksPerPiece+@blocksPerPiece-1) do |blockIndex|
+      break if blockIndex >= @numBlocks
+      yield blockIndex
+    end
+  end
+
   def blockIndexFromPieceAndOffset(pieceIndex, blockOffset)
     pieceIndex*@blocksPerPiece + blockOffset/@blockSize
+  end
+
+  def pieceCompleted?(pieceIndex)
+    complete = true
+    eachBlockInPiece(pieceIndex) do |blockIndex|
+      if ! @completeBlocks.set?(blockIndex)
+        complete = false
+        break
+      end
+    end 
+
+    complete
   end
 end
 

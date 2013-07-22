@@ -37,6 +37,7 @@ module QuartzTorrent
     attr_accessor :blockState
     attr_accessor :pieceManager
     attr_accessor :pieceManagerRequestMetadata
+    attr_accessor :peerChangeListener
   end
 
   # Implements a Reactor handler
@@ -82,6 +83,13 @@ module QuartzTorrent
       @logger.info "  number of pieces: #{metaInfo.info.pieces.size}"
       @logger.info "  total length      #{metaInfo.info.dataLength}"
 
+      # Add a listener for when the tracker's peers change.
+      torrentData.peerChangeListener = Proc.new do 
+        @logger.info "Managing peers for torrent #{bytesToHex(trackerclient.metainfo.infoHash)} on peer change event"
+        managePeers(trackerclient.metainfo.infoHash) 
+      end
+      trackerclient.addPeersChangedListener torrentData.peerChangeListener
+
       # Schedule peer connection management. Recurring and immediate 
       @reactor.scheduleTimer(@managePeersPeriod, [:manage_peers, trackerclient.metainfo.infoHash], true, true)
       # Schedule requesting blocks from peers. Recurring and immediate
@@ -92,7 +100,11 @@ module QuartzTorrent
 
     # Remove a torrent.
     def removeTorrent(infoHash)
-      @torrentData.delete infoHash
+      torrentData = @torrentData.delete infoHash
+  
+      if torrentData    
+        torrentData.trackerClient.removePeersChangedListener(torrentData.peerChangeListener)
+      end
 
       # Delete all peers related to this torrent
       # Can't do this right now, since it could be in use by an event handler. Use an immediate, non-recurring timer instead.
@@ -406,14 +418,25 @@ module QuartzTorrent
           return
         end
       
-        if metaData.type = :write
+        if metaData.type == :write
           if result.successful?
             # Block successfully written!
-            torrentData.blockState.setBlockCompleted metaData.data.pieceIndex, metaData.data.blockOffset, true
+            torrentData.blockState.setBlockCompleted metaData.data.pieceIndex, metaData.data.blockOffset, true do |pieceIndex|
+              # The block is completed! Check hash.
+              id = torrentData.pieceManager.checkPieceHash(metaData.data.pieceIndex)
+              torrentData.pieceManagerRequestMetadata[id] = PieceManagerRequestMetadata.new(:hash, metaData.data.pieceIndex)
+            end
           else
             # Block failed! Clear completed and requested state.
             torrentData.blockState.setBlockCompleted metaData.data.pieceIndex, metaData.data.blockOffset, false
             @logger.error "Writing block failed: #{result.error}"
+          end
+        elsif metaData.type == :hash
+          if result.successful?
+            @logger.info "Hash of piece #{metaData.data} is correct"
+          else
+            @logger.info "Hash of piece #{metaData.data} is incorrect. Marking piece as not complete."
+            torrentData.blockState.setPieceCompleted metaData.data, false
           end
         end
       end
@@ -490,6 +513,7 @@ if $0 =~ /peerclient.rb$/
   LogManager.setLevel "peerclient", :debug
   LogManager.setLevel "peerclient.reactor", :info
   LogManager.setLevel "blockstate", :debug
+  LogManager.setLevel "piecemanager", :info
   
   BASE_DIRECTORY = "tmp"
   FileUtils.mkdir BASE_DIRECTORY if ! File.exists?(BASE_DIRECTORY)

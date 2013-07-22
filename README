@@ -31,3 +31,7 @@ find all the 0 bits these are the blocks we still need. We can then search the p
 peers that have us unchoked to see which peers have this piece and request it from them.
 
 We also need to determine which pieces are complete so we can update peers with this info.
+
+TESTING:
+
+- Test peerclient downloading a piece with an invalid hash.

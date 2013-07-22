@@ -92,6 +92,7 @@ module QuartzTorrent
       @worker = nil
       @logger = LogManager.getLogger("tracker_client")
       @metainfo = nil
+      @peersChangedListeners = []
     end
     
     attr_reader :peerId
@@ -107,6 +108,16 @@ module QuartzTorrent
         result = @peers.keys
       end
       result
+    end
+
+    # Add a listener that gets notified when the peers list has changed.
+    # This listener is called from another thread so be sure to synchronize
+    # if necessary. The passed listener should be a proc that takes no arguments.
+    def addPeersChangedListener(listener)
+      @peersChangedListeners.push listener
+    end
+    def removePeersChangedListener(listener)
+      @peersChangedListeners.delete listener
     end
 
     # Get the last N errors reported 
@@ -157,6 +168,9 @@ module QuartzTorrent
               end
               @peersMutex.synchronize do
                 @peers = peersHash
+              end
+              if @peersChangedListeners.size > 0
+                @peersChangedListeners.each{ |l| l.call }
               end
             else
               @logger.debug "Response was unsuccessful from tracker"

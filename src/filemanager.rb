@@ -341,6 +341,16 @@ module QuartzTorrent
       id
     end
 
+    # Validate that the hash of the downloaded piece matches the hash from the metainfo.
+    # The result is successful? if the hash matches, false otherwise. The data of the result is
+    # set to the piece index.
+    def checkPieceHash(pieceIndex)
+      id = returnAndIncrRequestId
+      @requests.push [id, :hash_piece, pieceIndex]
+      @requestsSemaphore.signal
+      id
+    end
+
     # Result retrieval. Returns the next result, or nil if none are ready.
     # The results that are returned are PieceIOWorker::Result objects. 
     # For readBlock operations the data property of the result object contains
@@ -383,10 +393,14 @@ module QuartzTorrent
               result = @pieceIO.readPiece req[2]
             elsif req[1] == :find_existing
               result = findExistingPiecesInternal
+            elsif req[1] == :hash_piece
+              result = hashPiece req[2]
+              result = Result.new(req[0], result, req[2])
             end
-            result = Result.new(req[0], true, result)
+            result = Result.new(req[0], true, result) if ! result.is_a?(Result)
           rescue
-            @logger.debug "Exception when processing request: #{$!}"
+            @logger.error "Exception when processing request: #{$!}"
+            @logger.error "#{$!.backtrace.join("\n")}"
             result = Result.new(req[0], false, nil, $!)
           end
 
@@ -434,155 +448,25 @@ module QuartzTorrent
       end
       completePieceBitfield
     end
-  end
-=begin
-  # Manages the files for a single torrent.
-  class FileManager
 
-    # Load and Check that the files and dirs associated with the metainfo to see which pieces exist and are valid.
-    def initialize(baseDirectory, metainfo, ioManager = IOManager.new)
-      @baseDirectory = baseDirectory
-      @metainfo = metainfo
-      @pieceMapper = PieceMapper.new(baseDirectory, metainfo)
-      @completePieceBitfield = Bitfield.new(metainfo.info.pieces.length)
-      @ioManager = ioManager
-      @logger = LogManager.getLogger("filemanager")
-      @torrentDataLength = metainfo.info.files.reduce(0){ |memo,f| memo + f.length}
-      findExistingPieces
-    end
-
-    # Get the bitmap of downloaded peices
-    attr_reader :completePieceBitfield
-    # List of IncompletePiece objects for pieces in-progress.
-    attr_reader :incompletePieces
-    # Get the overall length of the torrent data
-    attr_reader :torrentDataLength
-
-    # Do we have all peices?
-    def complete?
-      @completePieceBitfield.length.times do |i|
-        return false if ! @completePieceBitfield.set?(i) 
+    def hashPiece(pieceIndex)
+      result = false
+      piece = @pieceIO.readPiece pieceIndex
+      if piece
+        # Check hash
+        piecesHashes = @metainfo.info.pieces
+        hash = piecesHashes[pieceIndex]
+        calc = Digest::SHA1.digest(piece)
+        if calc != hash
+          @logger.info "Piece #{pieceIndex} calculated hash #{bytesToHex(calc)} doesn't match tracker hash #{bytesToHex(hash)}"
+        else
+          @logger.debug "Piece #{pieceIndex+1}/#{piecesHashes.length} hash is correct."
+          result = true
+        end
+      else
+        @logger.debug "Piece #{pieceIndex+1}/#{piecesHashes.length} doesn't exist"
       end
-      true
-    end
-
-    # Write a block to an in-progress piece. The block is written to 
-    # piece 'peiceIndex', block 'blockIndex'. The block size for writing is blockLength
-    # and the block data is in block. Note that block may be smaller than blockLength; 
-    # consider if blockLength is 4 and the total length of the torrent is 10. In this case
-    # the last block is length 2.
-    def writeBlock(pieceIndex, blockIndex, blockLength, block)
-      regions = @pieceMapper.findBlock(pieceIndex, blockIndex, blockLength)
-      indexInBlock = 0
-      regions.each do |region|
-        # Get the IO for the file with path 'path'. If we are being used in a reactor, this is the IO facade. If we
-        # are not then this is a real IO.
-        io = @ioManager.get(region.path)
-        if ! io
-          # No IO for this file. 
-          raise "This process doesn't have write permission for the file #{region.path}" if File.exists?(region.path) && ! File.writable?(region.path)
-
-          # Ensure parent directories exist.
-          dir = File.dirname region.path
-          FileUtils.mkdir_p dir if ! File.directory?(dir)
-
-          begin
-            io = @ioManager.open(region.path)
-          rescue
-            @logger.error "Opening file #{region.path} failed: #{$!}"
-            raise "Opening file #{region.path} failed"
-          end
-        end
-
-        io.seek region.offset, IO::SEEK_SET
-        begin
-          io.write(block[indexInBlock, region.length])
-          indexInBlock += region.length
-        rescue
-          # Error when writing...
-          @logger.error "Writing block to file #{region.path} failed: #{$!}"
-          piece = nil
-          break
-        end
-
-        break if indexInBlock >= block.length
-      end
-    end
-
-    # Read a block from a completed piece. 
-    def readBlock(pieceIndex, blockIndex, blockLength)
-      readRegions @pieceMapper.findBlock(pieceIndex, blockIndex, blockLength)
-    end
-
-    # Read a piece. Returns nil if the piece is not yet present.
-    # NOTE: this method expects that if the ioManager is a reactor iomanager, 
-    # that the io was set with errorHandler=false so that we get the EOF errors.
-    def readPiece(pieceIndex)
-      readRegions @pieceMapper.findPiece(pieceIndex)
-    end
-  
-    def flush
-      @ioManager.flush
-    end
-
-    private
-    # Pass an ordered list of FileRegions to load.
-    def readRegions(regions)
-      piece = ""
-      regions.each do |region|
-        # Get the IO for the file with path 'path'. If we are being used in a reactor, this is the IO facade. If we
-        # are not then this is a real IO.
-        io = @ioManager.get(region.path)
-        if ! io
-          # No IO for this file. 
-          if ! File.exists?(region.path)
-            # This file hasn't been created yet by having blocks written to it.
-            piece = nil
-            break
-          end
-
-          raise "This process doesn't have read permission for the file #{region.path}" if ! File.readable?(region.path)
-
-          begin
-            io = @ioManager.open(region.path)
-          rescue
-            @logger.error "Opening file #{region.path} failed: #{$!}"
-            raise "Opening file #{region.path} failed"
-          end
-        end
-        io.seek region.offset, IO::SEEK_SET
-        begin
-          piece << io.read(region.length)
-        rescue
-          # Error when reading. Likely EOF, meaning this peice isn't all there yet.
-          piece = nil
-          break
-        end
-      end
-      piece
-    end
-
-    def findExistingPieces
-      raise "Base directory #{@baseDirectory} doesn't exist" if ! File.directory?(@baseDirectory)
-      raise "Base directory #{@baseDirectory} is not writable" if ! File.writable?(@baseDirectory)
-      raise "Base directory #{@baseDirectory} is not readable" if ! File.readable?(@baseDirectory)
-      piecesHashes = @metainfo.info.pieces
-      index = 0
-      piecesHashes.each do |hash|
-        @logger.debug "Checking piece #{index+1}/#{piecesHashes.length}"
-        piece = readPiece(index)
-        if piece
-          # Check hash
-          calc = Digest::SHA1.digest(piece)
-          if calc != hash
-            @logger.info "Piece #{index} calculated hash #{bytesToHex(calc)} doesn't match tracker hash #{bytesToHex(hash)}"
-          else
-            @completePieceBitfield.set(index)
-          end
-        end
-        index += 1
-      end
+      result
     end
   end
-=end
 end
