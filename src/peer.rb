@@ -1,3 +1,5 @@
+require 'src/rate'
+
 module QuartzTorrent
   class Peer
     @@stateChangeListeners = []
@@ -10,7 +12,10 @@ module QuartzTorrent
       @peerInterested = false
       @infoHash = nil
       @state = :disconnected
-      @uploadRate = 0
+      @uploadRate = Rate.new
+      @downloadRate = Rate.new
+      @uploadRateDataOnly = Rate.new
+      @downloadRateDataOnly = Rate.new
       @bitfield = nil
       @firstEstablishTime = nil
     end
@@ -51,6 +56,13 @@ module QuartzTorrent
 
     # Upload rate of peer to us.
     attr_accessor :uploadRate
+    # Download rate of us to peer.
+    attr_accessor :downloadRate
+
+    # Upload rate of peer to us, only counting actual torrent data
+    attr_accessor :uploadRateDataOnly
+    # Download rate of us to peer, only counting actual torrent data
+    attr_accessor :downloadRateDataOnly
 
     attr_accessor :bitfield
 
@@ -65,6 +77,14 @@ module QuartzTorrent
 
     def eql?(o) 
       trackerPeer.eql?(o)
+    end
+
+    # Update the upload rate of the peer from the passed PeerWireMessage.
+    def updateUploadRate(msg)
+      @uploadRate.update msg.length
+      if msg.is_a? Piece
+        @uploadRateDataOnly.update msg.data.length
+      end
     end
   end
 end

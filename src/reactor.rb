@@ -485,8 +485,9 @@ module QuartzTorrent
       while true
         timer = @timerManager.peek
         break if ! timer
-        if timer.secondsUntilExpiry > 0
-          selectTimeout = timer.secondsUntilExpiry
+        secondsUntilExpiry = timer.secondsUntilExpiry
+        if secondsUntilExpiry > 0
+          selectTimeout = secondsUntilExpiry
           break
         end
         # Process timer now; it's firing time has already passed.

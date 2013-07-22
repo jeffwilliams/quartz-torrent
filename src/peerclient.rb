@@ -72,7 +72,8 @@ module QuartzTorrent
       torrentData.pieceManager.findExistingPieces
       torrentData.pieceManager.wait
       existingBitfield = torrentData.pieceManager.nextResult.data
-      
+      @logger.info "We already have #{existingBitfield.countSet}/#{existingBitfield.length} pieces." 
+     
       torrentData.blockState = BlockState.new(trackerclient.metainfo, existingBitfield)
 
       @torrentData[trackerclient.metainfo.infoHash] = torrentData
@@ -199,6 +200,11 @@ module QuartzTorrent
         begin
           @logger.debug "Reading wire-message from #{peer.trackerPeer}"
           msg = PeerWireMessage.unserializeFrom currentIo
+        rescue EOFError
+          @logger.info "Peer #{peer.trackerPeer.to_s} disconnected."
+          peer.state = :disconnected
+          close
+          return
         rescue
           @logger.warn "Unserializing message from peer #{peer.trackerPeer.to_s} failed: #{$!}"
           @logger.warn $!.backtrace.join "\n"
@@ -206,7 +212,10 @@ module QuartzTorrent
           close
           return
         end
+        peer.updateUploadRate msg
+        @logger.info "Peer #{peer.trackerPeer.to_s} upload rate: #{peer.uploadRate.value}  data only: #{peer.uploadRateDataOnly.value}"
       end
+
 
       if msg.is_a? PeerHandshake
         # This is a remote peer that we connected to returning our handshake.
@@ -230,6 +239,8 @@ module QuartzTorrent
       elsif msg.is_a? Piece
         @logger.warn "Received piece message from peer for torrent #{bytesToHex(peer.infoHash)}: piece #{msg.pieceIndex} offset #{msg.blockOffset} length #{msg.data.length}."
         handlePieceReceive(msg, peer)
+      elsif msg.is_a? KeepAlive
+        @logger.warn "Received keep alive message from peer."
       else
         @logger.warn "Received a #{msg.class} message but handler is not implemented"
       end
@@ -409,9 +420,10 @@ module QuartzTorrent
         @logger.error "Request blocks peers: tracker client for torrent #{bytesToHex(infoHash)} not found."
         return
       end
-      
-      result = torrentData.pieceManager.nextResult
-      if result
+ 
+      while true
+        result = torrentData.pieceManager.nextResult
+        break if ! result
         metaData = torrentData.pieceManagerRequestMetadata[result.requestId]
         if ! metaData
           @logger.error "Can't find metadata for PieceManager request #{result.requestId}"
@@ -420,9 +432,11 @@ module QuartzTorrent
       
         if metaData.type == :write
           if result.successful?
+            @logger.info "Block written to disk. "
             # Block successfully written!
             torrentData.blockState.setBlockCompleted metaData.data.pieceIndex, metaData.data.blockOffset, true do |pieceIndex|
-              # The block is completed! Check hash.
+              # The peice is completed! Check hash.
+              @logger.info "Piece #{pieceIndex} is complete. Checking hash. "
               id = torrentData.pieceManager.checkPieceHash(metaData.data.pieceIndex)
               torrentData.pieceManagerRequestMetadata[id] = PieceManagerRequestMetadata.new(:hash, metaData.data.pieceIndex)
             end

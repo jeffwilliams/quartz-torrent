@@ -101,6 +101,15 @@ module QuartzTorrent
       s
     end
 
+    # Count the number of bits that are set. Slow: could use lookup table.
+    def countSet
+      count = 0
+      length.times do |i|
+        count += 1 if set?(i)
+      end
+      count
+    end
+
     protected
     def data
       @data

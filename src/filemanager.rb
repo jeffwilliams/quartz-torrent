@@ -436,7 +436,7 @@ module QuartzTorrent
           # Check hash
           calc = Digest::SHA1.digest(piece)
           if calc != hash
-            @logger.info "Piece #{index} calculated hash #{bytesToHex(calc)} doesn't match tracker hash #{bytesToHex(hash)}"
+            @logger.debug "Piece #{index} calculated hash #{bytesToHex(calc)} doesn't match tracker hash #{bytesToHex(hash)}"
           else
             completePieceBitfield.set(index)
             @logger.debug "Piece #{index+1}/#{piecesHashes.length} is complete."

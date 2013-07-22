@@ -56,6 +56,7 @@ module QuartzTorrent
 
   # All messages other than handshake have a 4-byte length, 1-byte message id, and payload.
   class PeerWireMessage
+    MessageKeepAlive = -1
     MessageChoke = 0
     MessageUnchoke = 1
     MessageInterested = 2
@@ -84,9 +85,19 @@ module QuartzTorrent
       raise "Subclasses of PeerWireMessage must implement payloadLength but #{self.class} didn't"
     end
 
+    # Total message length
+    def length
+      payloadLength + 5
+    end
+
     def self.unserializeFrom(io)
-      length = io.read(4).unpack("N")[0]
-      raise "Received peer message with length #{length}. All messages must have length >= 1" if length < 1
+      packedLength = io.read(4)
+      raise EOFError.new if packedLength.length == 0
+
+      length = packedLength.unpack("N")[0]
+      raise "Received peer message with length #{length}. All messages must have length >= 0" if length < 0
+      return KeepAlive.new if length == 0
+      
       id = io.read(1).unpack("C")[0]
       payload = io.read(length-1)
 
@@ -112,10 +123,29 @@ module QuartzTorrent
     end
   end
 
+  class KeepAlive < PeerWireMessage
+    def initialize
+      super(MessageKeepAlive)
+    end
+
+    def length
+      4
+    end
+
+    def serializeTo(io)
+      # A KeepAlive is just a 4byte length set to 0.
+      io.write [0].pack("N")
+    end
+
+    def unserialize(payload)
+    end
+  end
+
   class Choke < PeerWireMessage
     def initialize
       super(MessageChoke)
     end
+
     def payloadLength
       0
     end
