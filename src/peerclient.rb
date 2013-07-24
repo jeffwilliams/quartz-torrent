@@ -57,6 +57,7 @@ module QuartzTorrent
       @targetUnchokedPeerCount = 4
       @managePeersPeriod = 10 # Defined in bittorrent spec. Only unchoke peers every 10 seconds.
       @requestBlocksPeriod = 1
+      @handshakeTimeout = 1
     end
 
     attr_reader :torrentData
@@ -177,6 +178,7 @@ module QuartzTorrent
       msg.infoHash = peer.infoHash
       msg.serializeTo currentIo
       peer.state = :handshaking
+      @reactor.scheduleTimer(@handshakeTimeout, [:handshake_timeout, peer], false)
       @logger.info "Done sending handshake."
     end
 
@@ -256,6 +258,8 @@ module QuartzTorrent
       elsif metadata.is_a?(Array) && metadata[0] == :check_piece_manager
         #@logger.info "Checking for PieceManager results"
         checkPieceManagerResults(metadata[1])
+      elsif metadata.is_a?(Array) && metadata[0] == :handshake_timeout
+        handleHandshakeTimeout(metadata[1])
       elsif metadata.is_a?(Array) && metadata[0] == :removetorrent
         # Remove all the peers for this torrent.
         list = Array.new(@peers.findByInfoHash(metadata[1]))
@@ -302,6 +306,19 @@ module QuartzTorrent
       # If this was a peer we got from a tracker that had no id then we only learn the id on handshake.
       peer.trackerPeer.id = msg.peerId
       @peers.idSet peer
+    end
+
+    def handleHandshakeTimeout(peer)
+      if peer.state == :handshaking
+        @logger.warn "Peer #{peer.trackerPeer.to_s} failed handshake: handshake timed out after #{@handshakeTimeout} seconds."
+        io = findIoByMetainfo(peer)
+        if io
+          peer.state = :disconnected
+          close(io)
+        else
+          @logger.error "Couldn't find io associated with peer #{peer.trackerPeer}. Maybe it was already deleted."
+        end
+      end
     end
 
     def managePeers(infoHash)
@@ -377,7 +394,7 @@ module QuartzTorrent
       peers = @peers.findByInfoHash(infoHash)
       classifiedPeers = ClassifiedPeers.new peers
 
-      blockInfos = torrentData.blockState.findRequestableBlocks(classifiedPeers, 10)
+      blockInfos = torrentData.blockState.findRequestableBlocks(classifiedPeers, 100)
       blockInfos.each do |blockInfo|
         peer = blockInfo.peers.first
         io = findIoByMetainfo(peer)
