@@ -78,6 +78,13 @@ module QuartzTorrent
       result
     end
 
+    def copyFrom(bitfield)
+      raise "Source bitfield is too small (#{bitfield.length} < #{length})" if bitfield.length < length
+      (@data.length).times do |i|
+        @data[i] = bitfield.data[i]
+      end
+    end
+
     def compliment!
       @data.collect!{ |e| ~e }
       self

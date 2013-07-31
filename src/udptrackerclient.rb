@@ -4,8 +4,7 @@ module QuartzTorrent
     # Set UDP receive length to a value that allows up to 100 peers to be returned in an announce.
     ReceiveLength = 620 
     def initialize(metainfo)
-      super()
-      @metainfo = metainfo
+      super(metainfo)
       if metainfo.announce =~ /udp:\/\/([^:]+):(\d+)/
         @host = $1
         @port = $2
@@ -35,15 +34,18 @@ module QuartzTorrent
       raise "Invalid connect response: response transaction id is different from the request transaction id" if resp.transactionId != req.transactionId
       connectionId = resp.connectionId
 
+      dynamicParams = @dynamicRequestParamsBuilder.call
+
       # Send announce request      
       req = UdpTrackerAnnounceRequest.new(connectionId)
       req.peerId = @peerId
       req.infoHash = @metainfo.infoHash
-      req.downloaded = 0
-      req.left = @metainfo.info.totalLength.to_i
-      req.uploaded = 0
+      req.downloaded = dynamicParams.downloaded
+      req.left = dynamicParams.left
+      req.uploaded = dynamicParams.uploaded
       req.event = event
-      req.port = socket.addr[1]
+      #req.port = socket.addr[1]
+      req.port = @port
       socket.send req.serialize, 0
       resp = UdpTrackerAnnounceResponse.unserialize(socket.recvfrom(ReceiveLength)[0])
       socket.close

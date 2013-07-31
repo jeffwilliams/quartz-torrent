@@ -17,21 +17,55 @@ The file io thread would have a queue for requests, and would write responses in
 which are 'block ready' or 'write complete' (Why write complete?). In the coroutine, the handler would match the event to the io that 
 cared about it and deal with this event.
 
-Current feature:
+TODO
+  - Currently we are assuming that we will only have one Peer object for each peer, but that's not true. We could get one
+    from the tracker, and one from an incoming request that have different ports (one is the port we would connect to, and 
+    one is the port they connect to us using). We need to check the places where we search for peers by id to make sure 
+    they make sense.
+  - Currently when we request blocks we request a fixed amount from the first peer returned from the findRequestableBlocks
+    call. We should spread the requests out to other peers as well if we have saturated the first peer's connection.
+    We could tell by the peer's upload rate: upload_rate/(block_size/request_blocks_period) is the ratio of peer's measured
+    upload versus our expected upload based on our requests. If this ratio is 1 we are requesting at the rate that the 
+    peer can upload to us. If it is < 0 we are requesting faster than the peer can provide. We can keep increasing the
+    amount we request from the peer as long as the ratio stays at almost 1. If it drops below a threshold then we should scale
+    back our requesting.
 
-Need to decide which blocks of peices to request next.
-We must be able to tell which blocks are downloaded, and which are already requested.
-Have a bitmap for completed pieces (that are confirmed to have been written to disk
-and have been checksummed) and one for requested pieces. For the requested pieces,
-we also need a list of outstanding requests that we can timeout and decide to re-request
-after a certain time. 
+      upload_rate/(block_size/request_blocks_period)
 
-If we take the union of completed and requested pieces and 
-find all the 0 bits these are the blocks we still need. We can then search the piece bitmaps of the 
-peers that have us unchoked to see which peers have this piece and request it from them.
 
-We also need to determine which pieces are complete so we can update peers with this info.
+  - Send bitmap on handshake completion
+  - Send have messages
+  - Need to timeout when reading messages. For example, when receiving an incoming handshake
+    if it's the tracker testing us then we don't get a peerid. In this case we will block forever 
+    trying to read it.
 
 TESTING:
 
-- Test peerclient downloading a piece with an invalid hash.
+  - Test peerclient downloading a piece with an invalid hash.
+
+
+--------------
+
+Test 1:
+
+kanobe@andor:~/src/rubytorrentlib$ ruby1.9.1 src/peerclient.rb /tmp/newtorrent/DW\ Statcards\ Pages.zip.torrent
+kanobe@andor:~/src/rubytorrentlib$ tests/framework/run_testtorrent_tracker.rb
+kanobe@andor:~/src/rubytorrentlib$ ruby1.9.1 src/peerclient.rb --basedir tmp/client2/ --port 9997 /tmp/newtorrent/DW\ Statcards\ Pages.zip.torrent
+
+
+Bug in piece 400:
+  - /tmp/piece: From torrent client (bad)
+  - /tmp/piece2: from real archive (good)
+
+  - Difference starts at offset 0001c000
+  - The part beginning at 0001c000 in piece2 starts at 0001c09a in piece. 
+  - Seems like the calculation for the final offset in peerclient was too high.
+  - blocks are length 0x4000, ans 0001c000/4000 = 7, so problem is in 8th (final) block
+  - Request for that block is piece 400 offset 114688 length 2727
+  - Basically the problem is that I am treating the length in the request message as the block length
+    when really it is the length of the request. The filemanager class expects calls to be made using index of 
+    the block, when in this case there is no way to tell. Need to recode the filemanager classes to handle arbitrary lengths.
+
+
+
+

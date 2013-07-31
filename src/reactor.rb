@@ -61,7 +61,7 @@ module QuartzTorrent
     attr_accessor :reactor
 
     def scheduleTimer(duration, metainfo = nil, recurring = true, immed = false)
-      @reactor.scheduleTimer(duration, metainfo, recurring, immed = false) if @reactor
+      @reactor.scheduleTimer(duration, metainfo, recurring, immed) if @reactor
     end  
 
     def connect(addr, port, metainfo, timeout = nil)
@@ -173,9 +173,13 @@ module QuartzTorrent
         begin
           @logger.debug "IoFacade: must read: #{length} have read: #{data.length}. Reading #{length-data.length} bytes now" if @logger
           data << @io.read_nonblock(length-data.length)
-        rescue Errno::EWOULDBLOCK, Errno::EAGAIN, Errno::EINTR
+        rescue Errno::EWOULDBLOCK
           # Wait for more data.
-          @logger.debug "IoFacade: read would block or was interrupted" if @logger
+          @logger.debug "IoFacade: read would block" if @logger
+          Fiber.yield
+        rescue Errno::EAGAIN, Errno::EINTR
+          # Wait for more data.
+          @logger.debug "IoFacade: read was interrupted" if @logger
           Fiber.yield
         rescue
           @logger.debug "IoFacade: read error: #{$!}" if @logger

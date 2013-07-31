@@ -40,6 +40,7 @@ module QuartzTorrent
 
       @logger = LogManager.getLogger("blockstate")
   
+      @numPieces = initialPieceBitfield.length
       @pieceSize = metainfo.info.pieceLen
       @numPieces = metainfo.info.pieces.length
       @blocksPerPiece = (@pieceSize/blockSize + (@pieceSize%blockSize == 0 ? 0 : 1))
@@ -50,6 +51,7 @@ module QuartzTorrent
       @numBlocks += lastPieceLen / @blockSize
       @numBlocks += 1 if lastPieceLen % @blockSize != 0
       @lastBlockLength = (metainfo.info.dataLength - (@numBlocks-1)*@blockSize)
+      @totalLength = metainfo.info.dataLength
 
       raise "Initial piece bitfield is the wrong length" if initialPieceBitfield.length != @numPieces
 
@@ -76,6 +78,9 @@ module QuartzTorrent
     end
  
     attr_reader :blockSize
+
+    # Total length of the torrent in bytes.
+    attr_reader :totalLength
 
     # Return a list of BlockInfo objects representing blocks that 
     # can be requested from peers that we need and aren't already requested.
@@ -181,6 +186,41 @@ module QuartzTorrent
     end
   end
 
+  def pieceCompleted?(pieceIndex)
+    complete = true
+    eachBlockInPiece(pieceIndex) do |blockIndex|
+      if ! @completeBlocks.set?(blockIndex)
+        complete = false
+        break
+      end
+    end 
+
+    complete
+  end
+
+  def completePieceBitfield
+    result = Bitfield.new(@numPieces)
+    result.clearAll
+    @numPieces.times do |pieceIndex|
+      if pieceCompleted?(pieceIndex)
+        result.set(pieceIndex)
+      end
+    end 
+    result
+  end
+
+  # Number of bytes we have downloaded and verified.
+  def completedLength
+    num = @completeBlocks.countSet
+    # Last block may be smaller
+    extra = 0
+    if @completeBlocks.set?(@completeBlocks.length-1)
+      num -= 1
+      extra = @lastBlockLength
+    end
+    num*@blockSize + extra
+  end
+
   private
   # Yield to a block each block index in a piece.
   def eachBlockInPiece(pieceIndex)
@@ -194,16 +234,7 @@ module QuartzTorrent
     pieceIndex*@blocksPerPiece + blockOffset/@blockSize
   end
 
-  def pieceCompleted?(pieceIndex)
-    complete = true
-    eachBlockInPiece(pieceIndex) do |blockIndex|
-      if ! @completeBlocks.set?(blockIndex)
-        complete = false
-        break
-      end
-    end 
 
-    complete
-  end
+  
 end
 

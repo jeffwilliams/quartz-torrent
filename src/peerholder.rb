@@ -1,4 +1,5 @@
 require './src/peer.rb'
+require 'src/util'
 
 module QuartzTorrent
   class PeerHolder
@@ -6,6 +7,7 @@ module QuartzTorrent
       @peersById = {}
       @peersByAddr = {}
       @peersByInfoHash = {}
+      @log = LogManager.getLogger("peerholder")
     end
 
     def findById(peerId)
@@ -25,39 +27,52 @@ module QuartzTorrent
     def add(peer)
       raise "Peer must have it's infoHash set." if ! peer.infoHash
 
-      # Do not add if peer is already present by id OR address
-      return if @peersById.has_key?(peer.trackerPeer.id) || @peersByAddr.has_key?(byAddrKey(peer))
+      # Do not add if peer is already present by address
+      if @peersByAddr.has_key?(byAddrKey(peer))
+        @log.debug "Not adding peer #{peer} since it already exists by #{@peersById.has_key?(peer.trackerPeer.id) ? "id" : "addr"}."
+        return
+      end
 
       if peer.trackerPeer.id
-        @peersById[peer.trackerPeer.id] = peer
+        @peersById.pushToList(peer.trackerPeer.id, peer)
+        
         # If id is null, this is probably a peer received from the tracker that has no ID.
       end
+
       @peersByAddr[byAddrKey(peer)] = peer
-      list =  @peersByInfoHash[peer.infoHash]
-      if ! list
-        list = []
-        @peersByInfoHash[peer.infoHash] = list
-      end
-      list.push peer
+
+      @peersByInfoHash.pushToList(peer.infoHash, peer)
     end
 
     # This peer, which previously had no id, has finished handshaking and now has an ID.
     def idSet(peer)
-      @peersById[peer.trackerPeer.id] = peer
+      @peersById.each do |e| 
+        return if e.eql?(peer)
+      end
+      @peersById.pushToList(peer.trackerPeer.id, peer)
     end
 
-    def deleteById(peerId)
-      raise "Asked to delete a peer by id, but the peer's id is nil" if ! peerId
+    def delete(peer)
+      @peersByAddr.delete byAddrKey(peer)
 
-      peer = @peersById[peerId]
-      if peer
-        @peersById.delete peer
-        @peersByAddr.delete byAddrKey(peer)
-        list = @peersByInfoHash[peer.infoHash]
+      list = @peersByInfoHash[peer.infoHash]
+      if list
+        list.collect! do |p|
+          if !p.eql?(peer)
+            peer
+          else
+            nil
+          end
+        end
+        list.compact!
+      end
+
+      if peer.trackerPeer.id
+        list = @peersById[peer.trackerPeer.id]
         if list
-          list.collect! do |peer|
-            if peer.trackerPeer.id != peerId
-              peer 
+          list.collect! do |p|
+            if !p.eql?(peer)
+              peer
             else
               nil
             end

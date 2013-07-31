@@ -49,6 +49,22 @@ module QuartzTorrent
     end
   end
 
+  # Dynamic parameters needed when making a request to the tracker.
+  class TrackerDynamicRequestParams
+    def initialize(metainfo = nil)
+      @uploaded = 0
+      @downloaded = 0
+      if metainfo
+        @left = metainfo.info.totalLength.to_i
+      else
+        @left = 0
+      end
+    end
+    attr_accessor :uploaded
+    attr_accessor :downloaded
+    attr_accessor :left
+  end
+
   # Represents the response from a tracker request
   class TrackerResponse
     def initialize(success, error, peers)
@@ -76,13 +92,14 @@ module QuartzTorrent
   # This class represents a connection to a tracker for a specific torrent. It can be used to get
   # peers for that torrent.
   class TrackerClient
-    def initialize(maxErrors = 20)
+    def initialize(metainfo, maxErrors = 20)
       @peerId = "-QR0001-" # Azureus style
       @peerId << Process.pid.to_s
       @peerId = @peerId + "x" * (20-@peerId.length)
       @stopped = false
       @started = false
       @peers = {}
+      @port = 6881
       @peersMutex = Mutex.new
       @errors = []
       @maxErrors = @errors
@@ -91,12 +108,17 @@ module QuartzTorrent
       @event = :started
       @worker = nil
       @logger = LogManager.getLogger("tracker_client")
-      @metainfo = nil
+      @metainfo = metainfo
       @peersChangedListeners = []
+      @dynamicRequestParamsBuilder = Proc.new{ TrackerDynamicRequestParams.new(@metainfo)  }
     end
     
     attr_reader :peerId
+    attr_accessor :port
     attr_reader :metainfo
+    # This should be set to a Proc that when called will return a TrackerDynamicRequestParams object
+    # with up-to-date information.
+    attr_accessor :dynamicRequestParamsBuilder
 
     def started?
       @started
@@ -125,14 +147,14 @@ module QuartzTorrent
       @errors
     end
 
-    def self.create(metainfo)
+    def self.create(metainfo, start = true)
       result = nil
       if metainfo.announce =~ /udp:\/\//
         result = UdpTrackerClient.new(metainfo)
       else
         result = HttpTrackerClient.new(metainfo)
       end
-      result.start
+      result.start if start
 
       result
     end
@@ -163,6 +185,7 @@ module QuartzTorrent
             if response && response.successful?
               # Replace the list of peers
               peersHash = {}
+              @logger.info "Response contained #{response.peers.length} peers"
               response.peers.each do |p|
                 peersHash[p] = 1
               end

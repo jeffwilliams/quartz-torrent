@@ -75,8 +75,8 @@ module QuartzTorrent
       @@stateChangeListeners.push l
     end
 
-    def eql?(o) 
-      trackerPeer.eql?(o)
+    def eql?(o)
+      o.is_a?(Peer) && trackerPeer.eql?(o.trackerPeer)
     end
 
     # Update the upload rate of the peer from the passed PeerWireMessage.

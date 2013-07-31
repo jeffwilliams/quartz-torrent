@@ -1,3 +1,14 @@
+class Hash
+  def pushToList(key, value)
+    list = self[key]
+    if ! list
+      list = [] 
+      self[key] = list
+    end
+    list.push value
+  end
+end
+
 module QuartzTorrent
   def bytesToHex(v)
     s = ""

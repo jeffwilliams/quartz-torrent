@@ -52,6 +52,16 @@ module QuartzTorrent
       result.peerId = io.read(PeerIdLen)
       result
     end
+
+    def self.unserializeExceptPeerIdFrom(io)
+            result = PeerHandshake.new
+      len = io.read(1).unpack("C")[0]
+      proto = io.read(len)
+      raise "Unrecognized peer protocol name '#{proto}'" if proto != ProtocolName
+      io.read(8) # reserved
+      result.infoHash = io.read(InfoHashLen)
+      result
+    end
   end
 
   # All messages other than handshake have a 4-byte length, 1-byte message id, and payload.
@@ -230,7 +240,7 @@ module QuartzTorrent
     end
 
     def unserialize(payload)
-      @bitfield = Bitfield.new(0) if ! @bitfield
+      @bitfield = Bitfield.new(payload.length*8) if ! @bitfield
       @bitfield.unserialize(payload)
     end
   end

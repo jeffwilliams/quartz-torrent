@@ -2,7 +2,7 @@
 require 'rubygems'
 require 'minitest/unit'
 require 'minitest/autorun'
-require 'src/bitfield'
+require './src/bitfield'
 
 class TestBitfield < MiniTest::Unit::TestCase
   def setup
@@ -32,6 +32,7 @@ class TestBitfield < MiniTest::Unit::TestCase
 
   def testSerializeAndUnserialize
     bf = QuartzTorrent::Bitfield.new(16)
+    assert_equal 2, bf.byteLength
     s = bf.serialize   
     assert_equal 2, s.length
     # Test that an uninitialized bitfield is all 0s

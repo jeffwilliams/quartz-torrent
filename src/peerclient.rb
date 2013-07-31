@@ -24,12 +24,23 @@ module QuartzTorrent
     attr_accessor :data
   end
  
+  class ReadRequestMetadata
+    def initialize(peer, requestMsg)
+      @peer = peer
+      @requestMsg = requestMsg
+    end
+    attr_accessor :peer
+    attr_accessor :requestMsg
+  end
+
   class TorrentData
     def initialize(metainfo, trackerClient)
       @metainfo = metainfo
       @trackerClient = trackerClient
       @peerManager = PeerManager.new
       @pieceManagerRequestMetadata = {}
+      @bytesDownloaded = 0
+      @bytesUploaded = 0
     end
     attr_accessor :metainfo
     attr_accessor :trackerClient
@@ -38,6 +49,8 @@ module QuartzTorrent
     attr_accessor :pieceManager
     attr_accessor :pieceManagerRequestMetadata
     attr_accessor :peerChangeListener
+    attr_accessor :bytesDownloaded
+    attr_accessor :bytesUploaded
   end
 
   # Implements a Reactor handler
@@ -68,7 +81,7 @@ module QuartzTorrent
       torrentData = TorrentData.new(trackerclient.metainfo, trackerclient)
 
       # Check the existing pieces of the torrent.
-      @logger.error "Checking pieces of torrent #{bytesToHex(trackerclient.metainfo.infoHash)} synchronously. RECODE THIS"
+      @logger.error "Checking pieces of torrent #{bytesToHex(trackerclient.metainfo.infoHash)} synchronously."
       torrentData.pieceManager = QuartzTorrent::PieceManager.new(@baseDirectory, trackerclient.metainfo)
       torrentData.pieceManager.findExistingPieces
       torrentData.pieceManager.wait
@@ -88,16 +101,18 @@ module QuartzTorrent
       # Add a listener for when the tracker's peers change.
       torrentData.peerChangeListener = Proc.new do 
         @logger.info "Managing peers for torrent #{bytesToHex(trackerclient.metainfo.infoHash)} on peer change event"
-        managePeers(trackerclient.metainfo.infoHash) 
+
+        # Non-recurring and immediate timer
+        @reactor.scheduleTimer(@managePeersPeriod, [:manage_peers, trackerclient.metainfo.infoHash], false, true)
       end
       trackerclient.addPeersChangedListener torrentData.peerChangeListener
 
-      # Schedule peer connection management. Recurring and immediate 
-      @reactor.scheduleTimer(@managePeersPeriod, [:manage_peers, trackerclient.metainfo.infoHash], true, true)
-      # Schedule requesting blocks from peers. Recurring and immediate
-      @reactor.scheduleTimer(@requestBlocksPeriod, [:request_blocks, trackerclient.metainfo.infoHash], true, true)
+      # Schedule peer connection management. Recurring and not immediate 
+      @reactor.scheduleTimer(@managePeersPeriod, [:manage_peers, trackerclient.metainfo.infoHash], true, false)
+      # Schedule requesting blocks from peers. Recurring and not immediate
+      @reactor.scheduleTimer(@requestBlocksPeriod, [:request_blocks, trackerclient.metainfo.infoHash], true, false)
       # Schedule checking for PieceManager results
-      @reactor.scheduleTimer(@requestBlocksPeriod, [:check_piece_manager, trackerclient.metainfo.infoHash], true, true)
+      @reactor.scheduleTimer(@requestBlocksPeriod, [:check_piece_manager, trackerclient.metainfo.infoHash], true, false)
     end
 
     # Remove a torrent.
@@ -116,47 +131,75 @@ module QuartzTorrent
     def serverInit(metadata, addr, port)
       # A peer connected to us
       # Read handshake message
+      @logger.warn "Peer connection from #{addr}:#{port}"
       begin
-        msg = PeerHandshake.unserializeFrom currentIo
+        msg = PeerHandshake.unserializeExceptPeerIdFrom currentIo
       rescue
-        @logger.warn "Peer #{peer.trackerPeer.to_s} failed handshake: #{$!}"
-        peer.state = :disconnected
+        @logger.warn "Peer failed handshake: #{$!}"
         close
         return
       end
-      
-      peer = @peers.findById(msg.peerId)
-      if peer
-        if peer.ip != addr || peer.port != port
-          @logger.warn "Peer with id #{msg.peerId} connected from #{addr}:#{port}, but a peer with that id already exists at #{peer.ip}:#{peer.port}. Closing connection from new peer."
-          peer.state = :disconnected
-          close
-          return
-        end
 
-        if peer.state != :disconnected
-          @logger.warn "Peer with id #{msg.peerId} created a new connection when we already have a connection in state #{peer.state}. Closing new connection."
-          peer.state = :disconnected
-          close
-          return
-        end
-      else
-        peer = Peer.new(TrackerPeer.new(addr, port))
-        peer.trackerPeer.id = msg.peerId
-        peer.state = :handshaking
-        @peers.add peer
-      end
-
-      @logger.info "Peer #{peer.trackerPeer} connected to us. "
-
-      processHandshake(msg, peer)
+      torrentData = torrentDataForHandshake(msg, "#{addr}:#{port}")
+      # Are we tracking this torrent?
+      return if !torrentData
+      trackerclient = torrentData.trackerClient
 
       # Send handshake
-      msg = PeerHandshake.new
-      msg.peerId = trackerclient.peerId
-      msg.infoHash = peer.infoHash
-      msg.serializeTo currentIo
+      outgoing = PeerHandshake.new
+      outgoing.peerId = trackerclient.peerId
+      outgoing.infoHash = torrentData.metainfo.infoHash
+      outgoing.serializeTo currentIo
+ 
+      # Read incoming handshake's peerid
+      msg.peerId = currentIo.read(PeerHandshake::PeerIdLen)
+
+      if msg.peerId == trackerclient.peerId
+        @logger.info "We connected to ourself. Closing connection."
+        close
+        return
+      end
+     
+      peer = nil
+      peers = @peers.findById(msg.peerId)
+      if peers
+        peers.each do |existingPeer|
+          if existingPeer.state != :disconnected
+            @logger.warn "Peer with id #{msg.peerId} created a new connection when we already have a connection in state #{existingPeer.state}. Closing new connection."
+            close
+            return
+          else
+            if peer.trackerPeer.ip == addr && peer.trackerPeer.port == port
+              peer = existingPeer
+            end
+          end
+        end
+      end
+
+      if ! peer
+        peer = Peer.new(TrackerPeer.new(addr, port))
+        updatePeerWithHandshakeInfo(msg, peer)
+        @peers.add peer
+        if ! peers
+          @logger.warn "Unknown peer with id #{msg.peerId} connected."
+        else
+          @logger.warn "Known peer with id #{msg.peerId} connected from new location."
+        end
+      else
+        @logger.warn "Known peer with id #{msg.peerId} connected from known location."
+      end
+
+      @logger.info "Peer #{peer} connected to us. "
+
       peer.state = :established
+      peer.bitfield = Bitfield.new(torrentData.metainfo.info.pieces.length)
+@logger.info "Created empty bitfield of length #{peer.bitfield.length}"
+
+@logger.info "Peer #{peer} state is now #{peer.state}. Info hash is: #{bytesToHex(peer.infoHash)}. Torrent hash: #{bytesToHex(torrentData.metainfo.infoHash)}" 
+@logger.info @peers.to_s(torrentData.metainfo.infoHash)
+
+      # Send bitfield
+      sendBitfield(currentIo, torrentData.blockState.completePieceBitfield)
 
       setMetaInfo(peer)
     end
@@ -166,13 +209,13 @@ module QuartzTorrent
       # Send handshake
       torrentData = @torrentData[peer.infoHash]
       if ! torrentData
-        @logger.warn "No tracker client found for peer #{peer.trackerPeer.to_s}. Closing connection."
+        @logger.warn "No tracker client found for peer #{peer}. Closing connection."
         close
         return
       end
       trackerclient = torrentData.trackerClient
 
-      @logger.info "Connected to peer #{peer.trackerPeer}. Sending handshake."
+      @logger.info "Connected to peer #{peer}. Sending handshake."
       msg = PeerHandshake.new
       msg.peerId = trackerclient.peerId
       msg.infoHash = peer.infoHash
@@ -180,42 +223,45 @@ module QuartzTorrent
       peer.state = :handshaking
       @reactor.scheduleTimer(@handshakeTimeout, [:handshake_timeout, peer], false)
       @logger.info "Done sending handshake."
+
+      # Send bitfield
+      sendBitfield(currentIo, torrentData.blockState.completePieceBitfield)
     end
 
     def recvData(peer)
       msg = nil
 
-      @logger.debug "Got data from peer #{peer.trackerPeer}"
+      @logger.debug "Got data from peer #{peer}"
 
       if peer.state == :handshaking
         # Read handshake message
         begin
-          @logger.debug "Reading handshake from #{peer.trackerPeer}"
+          @logger.debug "Reading handshake from #{peer}"
           msg = PeerHandshake.unserializeFrom currentIo
         rescue
-          @logger.warn "Peer #{peer.trackerPeer.to_s} failed handshake: #{$!}"
+          @logger.warn "Peer #{peer} failed handshake: #{$!}"
           peer.state = :disconnected
           close
           return
         end
       else
         begin
-          @logger.debug "Reading wire-message from #{peer.trackerPeer}"
+          @logger.debug "Reading wire-message from #{peer}"
           msg = PeerWireMessage.unserializeFrom currentIo
         rescue EOFError
-          @logger.info "Peer #{peer.trackerPeer.to_s} disconnected."
+          @logger.info "Peer #{peer} disconnected."
           peer.state = :disconnected
           close
           return
         rescue
-          @logger.warn "Unserializing message from peer #{peer.trackerPeer.to_s} failed: #{$!}"
+          @logger.warn "Unserializing message from peer #{peer} failed: #{$!}"
           @logger.warn $!.backtrace.join "\n"
           peer.state = :disconnected
           close
           return
         end
         peer.updateUploadRate msg
-        @logger.info "Peer #{peer.trackerPeer.to_s} upload rate: #{peer.uploadRate.value}  data only: #{peer.uploadRateDataOnly.value}"
+        @logger.info "Peer #{peer} upload rate: #{peer.uploadRate.value}  data only: #{peer.uploadRateDataOnly.value}"
       end
 
 
@@ -225,7 +271,7 @@ module QuartzTorrent
         peer.state = :established
       elsif msg.is_a? BitfieldMessage
         @logger.warn "Received bitfield message from peer."
-        peer.bitfield = msg.bitfield
+        handleBitfield(msg, peer)
       elsif msg.is_a? Unchoke
         @logger.warn "Received unchoke message from peer."
         peer.amChoked = false
@@ -241,6 +287,9 @@ module QuartzTorrent
       elsif msg.is_a? Piece
         @logger.warn "Received piece message from peer for torrent #{bytesToHex(peer.infoHash)}: piece #{msg.pieceIndex} offset #{msg.blockOffset} length #{msg.data.length}."
         handlePieceReceive(msg, peer)
+      elsif msg.is_a? Request
+        @logger.warn "Received request message from peer for torrent #{bytesToHex(peer.infoHash)}: piece #{msg.pieceIndex} offset #{msg.blockOffset} length #{msg.blockLength}."
+        handleRequest(msg, peer)
       elsif msg.is_a? KeepAlive
         @logger.warn "Received keep alive message from peer."
       else
@@ -265,12 +314,9 @@ module QuartzTorrent
         list = Array.new(@peers.findByInfoHash(metadata[1]))
         list.each do |peer|
           # Close socket 
-          io = findIoByMetainfo(peer)
-          if io
+          withPeersIo(peer, "removing torrent") do |io|
             peer.state = :disconnected
             close(io)
-          else
-            @logger.info "Couldn't find io associated with peer #{peer.trackerPeer}. Maybe it was already deleted."
           end
           @peers.deleteById peer.trackerPeer.id
         end
@@ -280,28 +326,53 @@ module QuartzTorrent
     end
 
     def error(peer, details)
-      @logger.info "Error with peer: #{details}"
+      @logger.info "Error with peer #{peer}: #{details}"
     end
     
     private
     def processHandshake(msg, peer)
-      if @peers.findById msg.peerId
-        @logger.warn "Peer #{peer.trackerPeer.to_s} failed handshake: this peer is already connected."
-        close
-        return
+      peers = @peers.findById(msg.peerId)
+      if peers
+        peers.each do |existingPeer|
+          if existingPeer.state != :disconnected
+            @logger.warn "Peer with id #{msg.peerId} created a new connection when we already have a connection in state #{existingPeer.state}. Closing new connection."
+            @peers.deleteById msg.peerId
+            peer.state = :disconnected
+            close
+            return
+          end
+        end
       end
 
+      torrentData = torrentDataForHandshake(msg, peer)
+      # Are we tracking this torrent?
+      return false if !torrentData
+      trackerclient = torrentData.trackerClient
+
+      updatePeerWithHandshakeInfo(msg, peer)
+      peer.bitfield = Bitfield.new(torrentData.metainfo.info.pieces.length)
+@logger.info "Created empty bitfield of length #{peer.bitfield.length}"
+      true
+    end
+
+    def torrentDataForHandshake(msg, peer)
       torrentData = @torrentData[msg.infoHash]
       # Are we tracking this torrent?
       if !torrentData
-        @logger.info "Peer #{peer.trackerPeer.to_s} failed handshake: we are not managing torrent #{bytesToHex(msg.infoHash)}"
-        peer.state = :disconnected
+        if peer.is_a?(Peer)
+          @logger.info "Peer #{peer} failed handshake: we are not managing torrent #{bytesToHex(msg.infoHash)}"
+          peer.state = :disconnected
+        else
+          @logger.info "Incoming peer #{peer} failed handshake: we are not managing torrent #{bytesToHex(msg.infoHash)}"
+        end
         close
-        return 
+        return nil
       end
-      trackerclient = torrentData.trackerClient
+      torrentData
+    end
 
-      @logger.info "peer #{peer.trackerPeer.to_s} sent valid handshake for torrent #{bytesToHex(msg.infoHash)}"
+    def updatePeerWithHandshakeInfo(msg, peer)
+      @logger.info "peer #{peer} sent valid handshake for torrent #{bytesToHex(msg.infoHash)}"
       peer.infoHash = msg.infoHash
       # If this was a peer we got from a tracker that had no id then we only learn the id on handshake.
       peer.trackerPeer.id = msg.peerId
@@ -310,13 +381,10 @@ module QuartzTorrent
 
     def handleHandshakeTimeout(peer)
       if peer.state == :handshaking
-        @logger.warn "Peer #{peer.trackerPeer.to_s} failed handshake: handshake timed out after #{@handshakeTimeout} seconds."
-        io = findIoByMetainfo(peer)
-        if io
+        @logger.warn "Peer #{peer} failed handshake: handshake timed out after #{@handshakeTimeout} seconds."
+        withPeersIo(peer, "handling handshake timeout") do |io|
           peer.state = :disconnected
           close(io)
-        else
-          @logger.error "Couldn't find io associated with peer #{peer.trackerPeer}. Maybe it was already deleted."
         end
       end
     end
@@ -331,6 +399,9 @@ module QuartzTorrent
 
       # Update our internal peer list for this torrent from the tracker client
       trackerclient.peers.each do |p| 
+        # Don't treat ourself as a peer.
+        next if p.id && p.id == trackerclient.peerId
+
         if ! @peers.findByAddr(p.ip, p.port)
           @logger.debug "Adding tracker peer #{p} to peers list"
           peer = Peer.new(p)
@@ -350,32 +421,26 @@ module QuartzTorrent
 
       toConnect = manager.manageConnections(classifiedPeers)
       toConnect.each do |peer|
-        @logger.info "Connecting to peer #{peer.trackerPeer}"
+        @logger.info "Connecting to peer #{peer}"
         connect peer.trackerPeer.ip, peer.trackerPeer.port, peer
       end
 
       manageResult = manager.managePeers(classifiedPeers)
       manageResult.unchoke.each do |peer|
-        @logger.info "Unchoking peer #{peer.trackerPeer}"
-        io = findIoByMetainfo(peer)
-        if io
+        @logger.info "Unchoking peer #{peer}"
+        withPeersIo(peer, "unchoking peer") do |io|
           msg = Unchoke.new
           msg.serializeTo io
           peer.peerChoked = false
-        else
-          @logger.info "Unchoking peer #{peer.trackerPeer} failed: Couldn't find peer's io from reactor"
         end
       end
 
       manageResult.choke.each do |peer|
-        @logger.info "Choking peer #{peer.trackerPeer}"
-        io = findIoByMetainfo(peer)
-        if io
+        @logger.info "Choking peer #{peer}"
+        withPeersIo(peer, "choking peer") do |io|
           msg = Choke.new
           msg.serializeTo io
           peer.peerChoked = true
-        else
-          @logger.info "Choking peer #{peer.trackerPeer} failed: Couldn't find peer's io from reactor"
         end
       end
 
@@ -390,27 +455,23 @@ module QuartzTorrent
 
       #@logger.debug @peers.to_s(infoHash)
 
-
       peers = @peers.findByInfoHash(infoHash)
       classifiedPeers = ClassifiedPeers.new peers
 
       blockInfos = torrentData.blockState.findRequestableBlocks(classifiedPeers, 100)
       blockInfos.each do |blockInfo|
         peer = blockInfo.peers.first
-        io = findIoByMetainfo(peer)
-        if io
+        withPeersIo(peer, "requesting block") do |io|
           if ! peer.amInterested
             # Let this peer know that I'm interested if I haven't yet.
             msg = Interested.new
             msg.serializeTo io
             peer.amInterested = true
           end
-          @logger.info "Requesting block from #{peer.trackerPeer}: piece #{blockInfo.pieceIndex} offset #{blockInfo.offset} length #{blockInfo.length}"
+          @logger.info "Requesting block from #{peer}: piece #{blockInfo.pieceIndex} offset #{blockInfo.offset} length #{blockInfo.length}"
           msg = blockInfo.getRequest
           msg.serializeTo io
           torrentData.blockState.setBlockRequested blockInfo, true
-        else
-          @logger.info "Unchoking peer #{peer.trackerPeer} failed: Couldn't find peer's io from reactor"
         end
       end
     end
@@ -426,9 +487,42 @@ module QuartzTorrent
         @logger.error "Receive piece: torrent data for torrent #{bytesToHex(peer.infoHash)} not found."
         return
       end
+      torrentData.bytesDownloaded += msg.data.length
       blockIndexWithinPiece = msg.blockOffset / torrentData.blockState.blockSize
       id = torrentData.pieceManager.writeBlock(msg.pieceIndex, blockIndexWithinPiece, torrentData.blockState.blockSize, msg.data)
       torrentData.pieceManagerRequestMetadata[id] = PieceManagerRequestMetadata.new(:write, msg)
+    end
+
+    def handleRequest(msg, peer)
+      if peer.peerChoked
+        @logger.warn "Request piece: peer #{peer} requested a block when they are choked."
+        return
+      end
+
+      torrentData = @torrentData[peer.infoHash]
+      if ! torrentData
+        @logger.error "Request piece: torrent data for torrent #{bytesToHex(peer.infoHash)} not found."
+        return
+      end
+      if msg.blockLength <= 0
+        @logger.error "Request piece: peer requested block of length #{msg.blockLength} which is invalid."
+        return
+      end
+
+      blockIndexWithinPiece = msg.blockOffset / msg.blockLength
+      id = torrentData.pieceManager.readBlock(msg.pieceIndex, blockIndexWithinPiece, msg.blockLength)
+      torrentData.pieceManagerRequestMetadata[id] = PieceManagerRequestMetadata.new(:read, ReadRequestMetadata.new(peer,msg))
+    end
+
+    def handleBitfield(msg, peer)
+      torrentData = @torrentData[peer.infoHash]
+      if ! torrentData
+        @logger.error "Bitfield: torrent data for torrent #{bytesToHex(peer.infoHash)} not found."
+        return
+      end
+
+      peer.bitfield = Bitfield.new(torrentData.metainfo.info.pieces.length)
+      peer.bitfield.copyFrom(msg.bitfield)
     end
 
     def checkPieceManagerResults(infoHash)
@@ -462,6 +556,21 @@ module QuartzTorrent
             torrentData.blockState.setBlockCompleted metaData.data.pieceIndex, metaData.data.blockOffset, false
             @logger.error "Writing block failed: #{result.error}"
           end
+        elsif metaData.type == :read
+          if result.successful?
+            readRequestMetadata = metaData.data
+            peer = readRequestMetadata.peer
+            withPeersIo(peer, "sending piece message") do |io|
+              msg = Piece.new
+              msg.pieceIndex = readRequestMetadata.requestMsg.pieceIndex
+              msg.blockOffset = readRequestMetadata.requestMsg.blockOffset
+              msg.data = result.data
+              msg.serializeTo io
+              torrentData.bytesUploaded += msg.data.length
+            end
+          else
+            @logger.error "Reading block failed: #{result.error}"
+          end
         elsif metaData.type == :hash
           if result.successful?
             @logger.info "Hash of piece #{metaData.data} is correct"
@@ -471,7 +580,30 @@ module QuartzTorrent
           end
         end
       end
+    end
 
+    # Find the io associated with the peer and yield it to the passed block.
+    # If no io is found an error is logged.
+    #
+    def withPeersIo(peer, what = nil)
+      io = findIoByMetainfo(peer)
+      if io
+        yield io
+      else
+        s = ""
+        s = "when #{what}" if what
+        @logger.warn "Couldn't find the io for peer #{peer} #{what}"
+      end
+    end
+
+    def sendBitfield(io, bitfield)
+      set = bitfield.countSet
+      if set > 0
+        @logger.info "Sending bitfield with #{set} bits set of size #{bitfield.length}."
+        msg = BitfieldMessage.new
+        msg.bitfield = bitfield
+        msg.serializeTo io
+      end
     end
   end
 
@@ -498,6 +630,7 @@ module QuartzTorrent
       @worker = nil
       @handler = PeerClientHandler.new baseDirectory
       @reactor = QuartzTorrent::Reactor.new(@handler, LogManager.getLogger("peerclient.reactor"))
+      @toStart = []
     end
 
     attr_accessor :port
@@ -507,6 +640,7 @@ module QuartzTorrent
 
       @stopped = false
       @worker = Thread.new do
+        @toStart.each{ |trackerclient| trackerclient.start }
         @reactor.start 
         @logger.info "Reactor stopped."
         @handler.torrentData.each do |k,v|
@@ -525,14 +659,55 @@ module QuartzTorrent
 
     # Add a new torrent to manage.
     def addTrackerClient(trackerclient)
-      trackerclient.start if ! trackerclient.started?
       @handler.addTrackerClient(trackerclient)
+
+      trackerclient.dynamicRequestParamsBuilder = Proc.new do
+        torrentData = @handler.torrentData[trackerclient.metainfo.infoHash]
+        result = TrackerDynamicRequestParams.new(trackerclient.metainfo)
+        if torrentData
+          result.left = torrentData.blockState.totalLength - torrentData.blockState.completedLength
+          result.downloaded = torrentData.bytesDownloaded
+          result.uploaded = torrentData.bytesUploaded
+        end
+        result
+      end
+
+      # If we haven't started yet then add this trackerclient to a queue of 
+      # trackerclients to start once we are started. If we start too soon we 
+      # will connect to the tracker, and it will try to connect back to us before we are listening.
+      if ! trackerclient.started?
+        if @stopped
+          @toStart.push trackerclient
+        else
+          trackerclient.start 
+        end
+      end
     end
+
+    
+
   end
 end
 
 if $0 =~ /peerclient.rb$/
   require 'fileutils'
+  require 'getoptlong'
+
+  baseDirectory = "tmp"
+  port = 9998
+
+  opts = GetoptLong.new(
+    [ '--basedir', '-d', GetoptLong::REQUIRED_ARGUMENT],
+    [ '--port', '-p', GetoptLong::REQUIRED_ARGUMENT],
+  )
+
+  opts.each do |opt, arg|
+    if opt == '--basedir'
+      baseDirectory = arg
+    elsif opt == '--port'
+      port = arg.to_i
+    end
+  end
 
   QuartzTorrent::LogManager.initializeFromEnv
   #QuartzTorrent::LogManager.setLevel "peerclient", :info
@@ -543,11 +718,12 @@ if $0 =~ /peerclient.rb$/
   LogManager.setLevel "http_tracker_client", :debug
   LogManager.setLevel "peerclient", :debug
   LogManager.setLevel "peerclient.reactor", :info
+  #LogManager.setLevel "peerclient.reactor", :debug
   LogManager.setLevel "blockstate", :debug
   LogManager.setLevel "piecemanager", :info
+  LogManager.setLevel "peerholder", :debug
   
-  BASE_DIRECTORY = "tmp"
-  FileUtils.mkdir BASE_DIRECTORY if ! File.exists?(BASE_DIRECTORY)
+  FileUtils.mkdir baseDirectory if ! File.exists?(baseDirectory)
 
   torrent = ARGV[0]
   if ! torrent
@@ -555,8 +731,10 @@ if $0 =~ /peerclient.rb$/
   end
   puts "Loading torrent #{torrent}"
   metainfo = QuartzTorrent::Metainfo.createFromFile(torrent)
-  trackerclient = QuartzTorrent::TrackerClient.create(metainfo)
-  peerclient = QuartzTorrent::PeerClient.new(BASE_DIRECTORY)
+  trackerclient = QuartzTorrent::TrackerClient.create(metainfo, false)
+  trackerclient.port = port
+  peerclient = QuartzTorrent::PeerClient.new(baseDirectory)
+  peerclient.port = port
   peerclient.addTrackerClient(trackerclient)
 
 
