@@ -162,7 +162,7 @@ class TestFileManager < MiniTest::Unit::TestCase
         result = completeManager.nextResult
         assert_equal id, result.requestId, "Request id doesn't match response id"
         
-        incompleteManager.writeBlock(i,j,blockSize,result.data)
+        incompleteManager.writeBlock(i,j,result.data)
       end
     end
     incompleteManager.wait
@@ -177,10 +177,6 @@ class TestFileManager < MiniTest::Unit::TestCase
     puts "Bitfield: " + result.data.to_s
     assert_equal true, result.data.allSet?, "Copying using PieceManager failed: complete torrent has not all pieces completed."
 
-  end
-
-  def testCompleteTorrentInReactor
-    
   end
 
 end

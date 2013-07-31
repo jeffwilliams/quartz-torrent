@@ -488,8 +488,7 @@ module QuartzTorrent
         return
       end
       torrentData.bytesDownloaded += msg.data.length
-      blockIndexWithinPiece = msg.blockOffset / torrentData.blockState.blockSize
-      id = torrentData.pieceManager.writeBlock(msg.pieceIndex, blockIndexWithinPiece, torrentData.blockState.blockSize, msg.data)
+      id = torrentData.pieceManager.writeBlock(msg.pieceIndex, msg.blockOffset, msg.data)
       torrentData.pieceManagerRequestMetadata[id] = PieceManagerRequestMetadata.new(:write, msg)
     end
 
@@ -509,8 +508,7 @@ module QuartzTorrent
         return
       end
 
-      blockIndexWithinPiece = msg.blockOffset / msg.blockLength
-      id = torrentData.pieceManager.readBlock(msg.pieceIndex, blockIndexWithinPiece, msg.blockLength)
+      id = torrentData.pieceManager.readBlock(msg.pieceIndex, msg.blockOffset, msg.blockLength)
       torrentData.pieceManagerRequestMetadata[id] = PieceManagerRequestMetadata.new(:read, ReadRequestMetadata.new(peer,msg))
     end
 

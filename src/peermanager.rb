@@ -106,7 +106,7 @@ module QuartzTorrent
         # If one of the downloaders has changed, choke the peer
         downloadersMap = {}
         @downloaders.each{ |d| downloadersMap[d.trackerPeer] = d }
-        @bestUploadInterested.each do |peer|
+        bestUploadInterested.each do |peer|
           if downloadersMap.delete peer.trackerPeer
             # This peer was already a downloader. No changes.
           else

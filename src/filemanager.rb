@@ -72,9 +72,9 @@ module QuartzTorrent
 
     # Return a list of FileRegion objects. The FileRegion offsets specify
     # in order which regions of files the piece covers.
-    def findBlock(pieceIndex, blockIndex, blockLength)
-      leftOffset = @pieceSize*pieceIndex + blockIndex*blockLength
-      rightOffset = leftOffset + blockLength-1
+    def findBlock(pieceIndex, offset, length)
+      leftOffset = @pieceSize*pieceIndex + offset
+      rightOffset = leftOffset + length-1
 
       findPart(leftOffset, rightOffset)
     end
@@ -156,13 +156,10 @@ module QuartzTorrent
     attr_reader :torrentDataLength
 
     # Write a block to an in-progress piece. The block is written to 
-    # piece 'peiceIndex', block 'blockIndex'. The block size for writing is blockLength
-    # and the block data is in block. Note that block may be smaller than blockLength; 
-    # consider if blockLength is 4 and the total length of the torrent is 10. In this case
-    # the last block is length 2.
+    # piece 'peiceIndex', at offset 'offset'. The block data is in block. 
     # Throws exceptions on failure.
-    def writeBlock(pieceIndex, blockIndex, blockLength, block)
-      regions = @pieceMapper.findBlock(pieceIndex, blockIndex, blockLength)
+    def writeBlock(pieceIndex, offset, block)
+      regions = @pieceMapper.findBlock(pieceIndex, offset, block.length)
       indexInBlock = 0
       regions.each do |region|
         # Get the IO for the file with path 'path'. If we are being used in a reactor, this is the IO facade. If we
@@ -201,8 +198,8 @@ module QuartzTorrent
 
     # Read a block from a completed piece. Returns nil if the block doesn't exist yet. Throws exceptions
     # on error (for example, opening a file failed)
-    def readBlock(pieceIndex, blockIndex, blockLength)
-      readRegions @pieceMapper.findBlock(pieceIndex, blockIndex, blockLength)
+    def readBlock(pieceIndex, offset, length)
+      readRegions @pieceMapper.findBlock(pieceIndex, offset, length)
     end
 
     # Read a piece. Returns nil if the piece is not yet present.
@@ -308,17 +305,17 @@ module QuartzTorrent
     # to the request.
     # The readBlock and writeBlock methods are not threadsafe with respect to callers; 
     # they shouldn't be called by multiple threads concurrently.
-    def readBlock(pieceIndex, blockIndex, blockLength)
+    def readBlock(pieceIndex, offset, length)
       id = returnAndIncrRequestId
-      @requests.push [id, :read_block, pieceIndex, blockIndex, blockLength]
+      @requests.push [id, :read_block, pieceIndex, offset, length]
       @requestsSemaphore.signal
       id
     end
 
     # Write a block to the torrent asynchronously. 
-    def writeBlock(pieceIndex, blockIndex, blockLength, block)
+    def writeBlock(pieceIndex, offset, block)
       id = returnAndIncrRequestId
-      @requests.push [id, :write_block, pieceIndex, blockIndex, blockLength, block]
+      @requests.push [id, :write_block, pieceIndex, offset, block]
       @requestsSemaphore.signal
       id
     end
@@ -388,7 +385,7 @@ module QuartzTorrent
             if req[1] == :read_block
               result = @pieceIO.readBlock req[2], req[3], req[4]
             elsif req[1] == :write_block
-              @pieceIO.writeBlock req[2], req[3], req[4], req[5]
+              @pieceIO.writeBlock req[2], req[3], req[4]
             elsif req[1] == :read_piece
               result = @pieceIO.readPiece req[2]
             elsif req[1] == :find_existing
