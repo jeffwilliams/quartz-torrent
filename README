@@ -32,12 +32,12 @@ TODO
 
       upload_rate/(block_size/request_blocks_period)
 
-
-  - Send bitmap on handshake completion
+  - Limit peers to the target peer count
   - Send have messages
   - Need to timeout when reading messages. For example, when receiving an incoming handshake
     if it's the tracker testing us then we don't get a peerid. In this case we will block forever 
     trying to read it.
+  
 
 TESTING:
 
@@ -51,21 +51,5 @@ Test 1:
 kanobe@andor:~/src/rubytorrentlib$ ruby1.9.1 src/peerclient.rb /tmp/newtorrent/DW\ Statcards\ Pages.zip.torrent
 kanobe@andor:~/src/rubytorrentlib$ tests/framework/run_testtorrent_tracker.rb
 kanobe@andor:~/src/rubytorrentlib$ ruby1.9.1 src/peerclient.rb --basedir tmp/client2/ --port 9997 /tmp/newtorrent/DW\ Statcards\ Pages.zip.torrent
-
-
-Bug in piece 400:
-  - /tmp/piece: From torrent client (bad)
-  - /tmp/piece2: from real archive (good)
-
-  - Difference starts at offset 0001c000
-  - The part beginning at 0001c000 in piece2 starts at 0001c09a in piece. 
-  - Seems like the calculation for the final offset in peerclient was too high.
-  - blocks are length 0x4000, ans 0001c000/4000 = 7, so problem is in 8th (final) block
-  - Request for that block is piece 400 offset 114688 length 2727
-  - Basically the problem is that I am treating the length in the request message as the block length
-    when really it is the length of the request. The filemanager class expects calls to be made using index of 
-    the block, when in this case there is no way to tell. Need to recode the filemanager classes to handle arbitrary lengths.
-
-
 
 

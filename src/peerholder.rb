@@ -82,6 +82,10 @@ module QuartzTorrent
       end
     end
 
+    def all
+      @peersByAddr.values
+    end
+
     def to_s(infoHash)
       def makeFlags(peer)
         s = "["

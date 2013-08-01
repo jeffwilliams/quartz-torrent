@@ -41,9 +41,11 @@ module QuartzTorrent
       @pieceManagerRequestMetadata = {}
       @bytesDownloaded = 0
       @bytesUploaded = 0
+      @peers = PeerHolder.new
     end
     attr_accessor :metainfo
     attr_accessor :trackerClient
+    attr_accessor :peers
     attr_accessor :peerManager
     attr_accessor :blockState
     attr_accessor :pieceManager
@@ -61,8 +63,6 @@ module QuartzTorrent
 
       @baseDirectory = baseDirectory
 
-      # Peers
-      @peers = PeerHolder.new
       @logger = LogManager.getLogger("peerclient")
 
       # Number of peers we ideally want to try and be downloading/uploading with
@@ -161,7 +161,7 @@ module QuartzTorrent
       end
      
       peer = nil
-      peers = @peers.findById(msg.peerId)
+      peers = torrentData.peers.findById(msg.peerId)
       if peers
         peers.each do |existingPeer|
           if existingPeer.state != :disconnected
@@ -178,8 +178,8 @@ module QuartzTorrent
 
       if ! peer
         peer = Peer.new(TrackerPeer.new(addr, port))
-        updatePeerWithHandshakeInfo(msg, peer)
-        @peers.add peer
+        updatePeerWithHandshakeInfo(torrentData, msg, peer)
+        torrentData.peers.add peer
         if ! peers
           @logger.warn "Unknown peer with id #{msg.peerId} connected."
         else
@@ -193,10 +193,6 @@ module QuartzTorrent
 
       peer.state = :established
       peer.bitfield = Bitfield.new(torrentData.metainfo.info.pieces.length)
-@logger.info "Created empty bitfield of length #{peer.bitfield.length}"
-
-@logger.info "Peer #{peer} state is now #{peer.state}. Info hash is: #{bytesToHex(peer.infoHash)}. Torrent hash: #{bytesToHex(torrentData.metainfo.infoHash)}" 
-@logger.info @peers.to_s(torrentData.metainfo.infoHash)
 
       # Send bitfield
       sendBitfield(currentIo, torrentData.blockState.completePieceBitfield)
@@ -310,15 +306,20 @@ module QuartzTorrent
       elsif metadata.is_a?(Array) && metadata[0] == :handshake_timeout
         handleHandshakeTimeout(metadata[1])
       elsif metadata.is_a?(Array) && metadata[0] == :removetorrent
+        torrentData = @torrentData[metadata[1]]
+        if ! torrentData
+          @logger.warn "No torrent data found for torrent #{bytesToHex(metadata[1])}."
+          return
+        end
+
         # Remove all the peers for this torrent.
-        list = Array.new(@peers.findByInfoHash(metadata[1]))
-        list.each do |peer|
+        torrentData.peers.all.each do |peer|
           # Close socket 
-          withPeersIo(peer, "removing torrent") do |io|
+          withPeersIo(peer, "when removing torrent") do |io|
             peer.state = :disconnected
             close(io)
           end
-          @peers.deleteById peer.trackerPeer.id
+          torrentData.peers.delete peer
         end
       else
         @logger.info "Unknown timer #{metadata} expired."
@@ -331,12 +332,16 @@ module QuartzTorrent
     
     private
     def processHandshake(msg, peer)
-      peers = @peers.findById(msg.peerId)
+      torrentData = torrentDataForHandshake(msg, peer)
+      # Are we tracking this torrent?
+      return false if !torrentData
+
+      peers = torrentData.peers.findById(msg.peerId)
       if peers
         peers.each do |existingPeer|
           if existingPeer.state != :disconnected
             @logger.warn "Peer with id #{msg.peerId} created a new connection when we already have a connection in state #{existingPeer.state}. Closing new connection."
-            @peers.deleteById msg.peerId
+            torrentData.peers.delete existingPeer
             peer.state = :disconnected
             close
             return
@@ -344,12 +349,9 @@ module QuartzTorrent
         end
       end
 
-      torrentData = torrentDataForHandshake(msg, peer)
-      # Are we tracking this torrent?
-      return false if !torrentData
       trackerclient = torrentData.trackerClient
 
-      updatePeerWithHandshakeInfo(msg, peer)
+      updatePeerWithHandshakeInfo(torrentData, msg, peer)
       peer.bitfield = Bitfield.new(torrentData.metainfo.info.pieces.length)
 @logger.info "Created empty bitfield of length #{peer.bitfield.length}"
       true
@@ -371,12 +373,12 @@ module QuartzTorrent
       torrentData
     end
 
-    def updatePeerWithHandshakeInfo(msg, peer)
-      @logger.info "peer #{peer} sent valid handshake for torrent #{bytesToHex(msg.infoHash)}"
+    def updatePeerWithHandshakeInfo(torrentData, msg, peer)
+      @logger.info "peer #{peer} sent valid handshake for torrent #{bytesToHex(torrentData.metainfo.infoHash)}"
       peer.infoHash = msg.infoHash
       # If this was a peer we got from a tracker that had no id then we only learn the id on handshake.
       peer.trackerPeer.id = msg.peerId
-      @peers.idSet peer
+      torrentData.peers.idSet peer
     end
 
     def handleHandshakeTimeout(peer)
@@ -402,16 +404,15 @@ module QuartzTorrent
         # Don't treat ourself as a peer.
         next if p.id && p.id == trackerclient.peerId
 
-        if ! @peers.findByAddr(p.ip, p.port)
+        if ! torrentData.peers.findByAddr(p.ip, p.port)
           @logger.debug "Adding tracker peer #{p} to peers list"
           peer = Peer.new(p)
           peer.infoHash = infoHash
-          @peers.add peer
+          torrentData.peers.add peer
         end
       end
 
-      peers = @peers.findByInfoHash(infoHash)
-      classifiedPeers = ClassifiedPeers.new peers
+      classifiedPeers = ClassifiedPeers.new torrentData.peers.all
 
       manager = torrentData.peerManager
       if ! manager
@@ -453,9 +454,7 @@ module QuartzTorrent
         return
       end
 
-      #@logger.debug @peers.to_s(infoHash)
-
-      peers = @peers.findByInfoHash(infoHash)
+      peers = torrentData.peers.findByInfoHash(infoHash)
       classifiedPeers = ClassifiedPeers.new peers
 
       blockInfos = torrentData.blockState.findRequestableBlocks(classifiedPeers, 100)
@@ -572,6 +571,7 @@ module QuartzTorrent
         elsif metaData.type == :hash
           if result.successful?
             @logger.info "Hash of piece #{metaData.data} is correct"
+            sendHaves(torrentData, pieceIndex)
           else
             @logger.info "Hash of piece #{metaData.data} is incorrect. Marking piece as not complete."
             torrentData.blockState.setPieceCompleted metaData.data, false
@@ -602,6 +602,18 @@ module QuartzTorrent
         msg.bitfield = bitfield
         msg.serializeTo io
       end
+    end
+
+    def sendHaves(torrentData, pieceIndex)
+      @logger.info "Sending Have messages to all peers for piece #{pieceIndex}"
+      torrentData.peers.findByInfoHash(torrentData.metainfo.infoHash) do |peer|
+        withPeersIo(peer, "when sending Have message") do |io|
+          msg = Have.new
+          msg.pieceIndex = pieceIndex
+          msg.serializeTo io
+        end
+      end
+      
     end
   end
 
@@ -687,71 +699,3 @@ module QuartzTorrent
   end
 end
 
-if $0 =~ /peerclient.rb$/
-  require 'fileutils'
-  require 'getoptlong'
-
-  baseDirectory = "tmp"
-  port = 9998
-
-  opts = GetoptLong.new(
-    [ '--basedir', '-d', GetoptLong::REQUIRED_ARGUMENT],
-    [ '--port', '-p', GetoptLong::REQUIRED_ARGUMENT],
-  )
-
-  opts.each do |opt, arg|
-    if opt == '--basedir'
-      baseDirectory = arg
-    elsif opt == '--port'
-      port = arg.to_i
-    end
-  end
-
-  QuartzTorrent::LogManager.initializeFromEnv
-  #QuartzTorrent::LogManager.setLevel "peerclient", :info
-  LogManager.logFile= "stdout"
-  LogManager.defaultLevel= :info
-  LogManager.setLevel "peer_manager", :debug
-  LogManager.setLevel "tracker_client", :debug
-  LogManager.setLevel "http_tracker_client", :debug
-  LogManager.setLevel "peerclient", :debug
-  LogManager.setLevel "peerclient.reactor", :info
-  #LogManager.setLevel "peerclient.reactor", :debug
-  LogManager.setLevel "blockstate", :debug
-  LogManager.setLevel "piecemanager", :info
-  LogManager.setLevel "peerholder", :debug
-  
-  FileUtils.mkdir baseDirectory if ! File.exists?(baseDirectory)
-
-  torrent = ARGV[0]
-  if ! torrent
-    torrent = "tests/data/testtorrent.torrent"
-  end
-  puts "Loading torrent #{torrent}"
-  metainfo = QuartzTorrent::Metainfo.createFromFile(torrent)
-  trackerclient = QuartzTorrent::TrackerClient.create(metainfo, false)
-  trackerclient.port = port
-  peerclient = QuartzTorrent::PeerClient.new(baseDirectory)
-  peerclient.port = port
-  peerclient.addTrackerClient(trackerclient)
-
-
-  running = true
-
-  puts "Creating signal handler"
-  Signal.trap('SIGINT') do
-    puts "Got SIGINT. Shutting down."
-    running = false
-  end
-
-  puts "Starting peer client"
-  peerclient.start
-
-  while running do
-    sleep 2
-    
-  end
- 
-  peerclient.stop
-  
-end
