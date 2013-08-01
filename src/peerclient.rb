@@ -81,7 +81,7 @@ module QuartzTorrent
       torrentData = TorrentData.new(trackerclient.metainfo, trackerclient)
 
       # Check the existing pieces of the torrent.
-      @logger.error "Checking pieces of torrent #{bytesToHex(trackerclient.metainfo.infoHash)} synchronously."
+      @logger.info "Checking pieces of torrent #{bytesToHex(trackerclient.metainfo.infoHash)} synchronously."
       torrentData.pieceManager = QuartzTorrent::PieceManager.new(@baseDirectory, trackerclient.metainfo)
       torrentData.pieceManager.findExistingPieces
       torrentData.pieceManager.wait
@@ -142,8 +142,20 @@ module QuartzTorrent
 
       torrentData = torrentDataForHandshake(msg, "#{addr}:#{port}")
       # Are we tracking this torrent?
-      return if !torrentData
+      if !torrentData
+        @logger.warn "Peer sent handshake for unknown torrent"
+        close
+        return 
+      end
       trackerclient = torrentData.trackerClient
+
+      # If we already have too many connections, don't allow this connection.
+      classifiedPeers = ClassifiedPeers.new torrentData.peers.all
+      if classifiedPeers.establishedPeers.length > @targetActivePeerCount
+        @logger.warn "Closing connection to peer from #{addr}:#{port} because we already have #{classifiedPeers.establishedPeers.length} active peers which is > the target count of #{@targetActivePeerCount} "
+        close
+        return 
+      end  
 
       # Send handshake
       outgoing = PeerHandshake.new
@@ -155,7 +167,7 @@ module QuartzTorrent
       msg.peerId = currentIo.read(PeerHandshake::PeerIdLen)
 
       if msg.peerId == trackerclient.peerId
-        @logger.info "We connected to ourself. Closing connection."
+        @logger.info "We got a connection from ourself. Closing connection."
         close
         return
       end
@@ -286,6 +298,9 @@ module QuartzTorrent
       elsif msg.is_a? Request
         @logger.warn "Received request message from peer for torrent #{bytesToHex(peer.infoHash)}: piece #{msg.pieceIndex} offset #{msg.blockOffset} length #{msg.blockLength}."
         handleRequest(msg, peer)
+      elsif msg.is_a? Have
+        @logger.warn "Received have message from peer for torrent #{bytesToHex(peer.infoHash)}: piece #{msg.pieceIndex}"
+        handleHave(msg, peer)
       elsif msg.is_a? KeepAlive
         @logger.warn "Received keep alive message from peer."
       else
@@ -327,7 +342,16 @@ module QuartzTorrent
     end
 
     def error(peer, details)
-      @logger.info "Error with peer #{peer}: #{details}"
+      # If a peer closes the connection during handshake before we determine their id, we don't have a completed
+      # Peer object yet. In this case the peer parameter is the symbol :listener_socket
+      if peer == :listener_socket
+        @logger.info "Error with handshaking peer: #{details}. Closing connection."
+      else
+        @logger.info "Error with peer #{peer}: #{details}. Closing connection."
+        peer.state = :disconnected
+      end
+      # Close connection
+      close
     end
     
     private
@@ -336,10 +360,17 @@ module QuartzTorrent
       # Are we tracking this torrent?
       return false if !torrentData
 
+      if msg.peerId == torrentData.trackerClient.peerId
+        @logger.info "We connected to ourself. Closing connection."
+        peer.isUs = true
+        close
+        return
+      end
+
       peers = torrentData.peers.findById(msg.peerId)
       if peers
         peers.each do |existingPeer|
-          if existingPeer.state != :disconnected
+          if existingPeer.state == :connected
             @logger.warn "Peer with id #{msg.peerId} created a new connection when we already have a connection in state #{existingPeer.state}. Closing new connection."
             torrentData.peers.delete existingPeer
             peer.state = :disconnected
@@ -353,7 +384,6 @@ module QuartzTorrent
 
       updatePeerWithHandshakeInfo(torrentData, msg, peer)
       peer.bitfield = Bitfield.new(torrentData.metainfo.info.pieces.length)
-@logger.info "Created empty bitfield of length #{peer.bitfield.length}"
       true
     end
 
@@ -520,6 +550,17 @@ module QuartzTorrent
 
       peer.bitfield = Bitfield.new(torrentData.metainfo.info.pieces.length)
       peer.bitfield.copyFrom(msg.bitfield)
+    end
+
+    def handleHave(msg, peer)
+      torrentData = @torrentData[peer.infoHash]
+      if ! torrentData
+        @logger.error "Have: torrent data for torrent #{bytesToHex(peer.infoHash)} not found."
+        return
+      end
+      
+      # Update peer's bitfield
+      peer.bitfield.set msg.pieceIndex
     end
 
     def checkPieceManagerResults(infoHash)

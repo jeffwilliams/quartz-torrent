@@ -18,6 +18,7 @@ module QuartzTorrent
       @downloadRateDataOnly = Rate.new
       @bitfield = nil
       @firstEstablishTime = nil
+      @isUs = false
     end
 
     # A TrackerPeer class with the information about the peer retrieved from
@@ -53,6 +54,9 @@ module QuartzTorrent
       @@stateChangeListeners.each{ |l| l.call(self, oldState, @state) }
       @firstEstablishTime = Time.new if @state == :established && ! @firstEstablishTime
     end
+
+    # Is this peer ourself? Used to tell if we connected to ourself.
+    attr_accessor :isUs
 
     # Upload rate of peer to us.
     attr_accessor :uploadRate

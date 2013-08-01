@@ -15,6 +15,10 @@ class ClassifiedPeers
     @requestablePeers = []
 
     peers.each do |peer|
+
+      # If we come across ourself, ignore it.
+      next if peer.isUs
+
       if peer.state == :disconnected
         @disconnectedPeers.push peer
       elsif peer.state == :handshaking

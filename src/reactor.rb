@@ -632,6 +632,11 @@ module QuartzTorrent
     def disposeIo(io)
       if io.is_a?(IOInfo)
         begin
+          # Flush any output
+          begin
+            writeOutputBuffer(io)
+          rescue
+          end
           io.io.close
         rescue
         end
