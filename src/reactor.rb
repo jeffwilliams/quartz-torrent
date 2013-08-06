@@ -1,6 +1,7 @@
 require 'socket'
 require 'pqueue'
 require 'fiber'
+require 'thread'
 include Socket::Constants
 
 module QuartzTorrent
@@ -277,13 +278,14 @@ module QuartzTorrent
 
     def initialize
       @queue = PQueue.new { |a,b| b.expiry <=> a.expiry }
+      @mutex = Mutex.new
     end
 
     def add(duration, metainfo = nil, recurring = true, immed = false)
       raise "TimerManager.add: Timer duration may not be nil" if duration.nil?
       info = TimerInfo.new(duration, recurring, metainfo)
       info.expiry = Time.new if immed
-      @queue.push info
+      @mutex.synchronize{ @queue.push info }
       info
     end
   
@@ -300,7 +302,8 @@ module QuartzTorrent
     # Remove the next timer event from the queue and return it as a TimerHandler::TimerInfo object.
     def next
       clearCancelled
-      result = @queue.pop
+      result = nil
+      @mutex.synchronize{ result = @queue.pop }
       if result && result.recurring
         add(result.duration, result.metainfo, result.recurring)
       end
@@ -407,12 +410,15 @@ module QuartzTorrent
 
     def stop
       @stopped = true
-      @eventWrite.write "x"
+      @eventWrite.write 'x'
       @eventWrite.flush
     end
 
     def scheduleTimer(duration, metainfo = nil, recurring = true, immed = false)
       @timerManager.add(duration, metainfo, recurring, immed)
+      # This timer may expire sooner than the current sleep we are doing in select(). To make
+      # sure we will write to the event pipe to break out of select().
+      @eventWrite.write 'x'
     end  
 
     # Meant to be called from the handler. Adds the specified data to the outgoing queue for the current io
@@ -505,6 +511,11 @@ module QuartzTorrent
       selectResult = nil
       while true
         begin
+          if readset.length > 1024 || writeset.length > 1024
+            @logger.error "Too many file descriptors to pass to select! Trimming them. Some fds may starve!" if @logger
+            readset = readset.first(1024)
+            writeset = writeset.first(1024)
+          end
           @logger.debug "eventloop: Calling select" if @logger
           selectResult = IO.select(readset, writeset, nil, selectTimeout)
           @logger.debug "eventloop: select done. result: #{selectResult.inspect}" if @logger
@@ -525,7 +536,7 @@ module QuartzTorrent
       else
         readable, writeable = selectResult
         readable.each do |io|
-          # This could be the eventRead pipe, which we use to signal shutdown.
+          # This could be the eventRead pipe, which we use to signal shutdown or to reloop.
           if io == @eventRead
             @logger.debug "Event received on the eventRead pipe." if @logger
             next
@@ -634,7 +645,8 @@ module QuartzTorrent
         begin
           # Flush any output
           begin
-            writeOutputBuffer(io)
+            @logger.debug "disposeIo: flushing data" if @logger
+            io.outputBuffer.flush
           rescue
           end
           io.io.close

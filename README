@@ -18,10 +18,6 @@ which are 'block ready' or 'write complete' (Why write complete?). In the corout
 cared about it and deal with this event.
 
 TODO
-  - Currently we are assuming that we will only have one Peer object for each peer, but that's not true. We could get one
-    from the tracker, and one from an incoming request that have different ports (one is the port we would connect to, and 
-    one is the port they connect to us using). We need to check the places where we search for peers by id to make sure 
-    they make sense.
   - Currently when we request blocks we request a fixed amount from the first peer returned from the findRequestableBlocks
     call. We should spread the requests out to other peers as well if we have saturated the first peer's connection.
     We could tell by the peer's upload rate: upload_rate/(block_size/request_blocks_period) is the ratio of peer's measured
@@ -32,11 +28,13 @@ TODO
 
       upload_rate/(block_size/request_blocks_period)
 
+  - Need to check torrent pieces asynchronously to not block the reactor. Currently if we add a second
+    torrent, activity on existing torrents will be blocked until we've checked the new torrent's pieces.
   - Limit peers to the target peer count
-  - Send have messages
   - Need to timeout when reading messages. For example, when receiving an incoming handshake
     if it's the tracker testing us then we don't get a peerid. In this case we will block forever 
     trying to read it.
+  - Don't request from peers that are choking us
   
 
 TESTING:
@@ -51,5 +49,16 @@ Test 1:
 kanobe@andor:~/src/rubytorrentlib$ ruby1.9.1 src/peerclient.rb /tmp/newtorrent/DW\ Statcards\ Pages.zip.torrent
 kanobe@andor:~/src/rubytorrentlib$ tests/framework/run_testtorrent_tracker.rb
 kanobe@andor:~/src/rubytorrentlib$ ruby1.9.1 src/peerclient.rb --basedir tmp/client2/ --port 9997 /tmp/newtorrent/DW\ Statcards\ Pages.zip.torrent
+
+------
+
+Curses download interface:
+
+  - Like rtorrent
+  - list torrents being downloaded, and user can select to
+    get details screen.
+  - Summary per torrent:
+    active peer count, total peer count, unckoked/choked/interested/not interested peer counts, rates
+
 
 

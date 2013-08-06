@@ -54,7 +54,7 @@ module QuartzTorrent
       @totalLength = metainfo.info.dataLength
 
       raise "Initial piece bitfield is the wrong length" if initialPieceBitfield.length != @numPieces
-
+      raise "Piece size is not divisible by block size" if @pieceSize % blockSize != 0
 
       @completeBlocks = Bitfield.new(@numBlocks)
       blockIndex = 0
@@ -219,6 +219,20 @@ module QuartzTorrent
       extra = @lastBlockLength
     end
     num*@blockSize + extra
+  end
+
+  def createBlockinfoByPieceResponse(pieceIndex, offset, length)
+    blockIndex = pieceIndex*@blocksPerPiece + offset/@blockSize
+    raise "offset in piece is not divisible by block size" if offset % @blockSize != 0
+    BlockInfo.new(pieceIndex, offset, length, [], blockIndex)
+  end
+
+  def createBlockinfoByBlockIndex(blockIndex)
+    pieceIndex = blockIndex / @blockSize
+    offset = (blockIndex % @blocksPerPiece)*@blockSize
+    length = @blockSize
+    raise "offset in piece is not divisible by block size" if offset % @blockSize != 0
+    BlockInfo.new(pieceIndex, offset, length, [], blockIndex)
   end
 
   private

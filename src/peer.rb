@@ -19,6 +19,7 @@ module QuartzTorrent
       @bitfield = nil
       @firstEstablishTime = nil
       @isUs = false
+      @requestedBlocks = {}
     end
 
     # A TrackerPeer class with the information about the peer retrieved from
@@ -68,7 +69,11 @@ module QuartzTorrent
     # Download rate of us to peer, only counting actual torrent data
     attr_accessor :downloadRateDataOnly
 
+    # A Bitfield representing the pieces that the peer has.
     attr_accessor :bitfield
+
+    # A hash of the block indexes of the outstanding blocks requested from this peer
+    attr_accessor :requestedBlocks
 
     def to_s
       @trackerPeer.to_s
@@ -89,6 +94,31 @@ module QuartzTorrent
       if msg.is_a? Piece
         @uploadRateDataOnly.update msg.data.length
       end
+    end
+
+    # This method does not clone listeners.
+    def clone
+      peer = Peer.new(@trackerPeer)
+      peer.amChoked = amChoked
+      peer.amInterested = amInterested
+      peer.peerChoked = peerChoked
+      peer.peerInterested = peerInterested
+      peer.firstEstablishTime = firstEstablishTime
+      peer.state = state
+      peer.isUs = isUs
+      # Take the values of the rates. This is so that if the caller doesn't read the rates
+      # in a timely fashion, they don't decay.
+      peer.uploadRate = uploadRate.value
+      peer.downloadRate = downloadRate.value
+      peer.uploadRateDataOnly = uploadRateDataOnly.value
+      peer.downloadRateDataOnly = downloadRateDataOnly.value
+      if bitfield
+        peer.bitfield = Bitfield.new(bitfield.length)
+        peer.bitfield.copyFrom bitfield
+      end
+      peer.requestedBlocks = requestedBlocks.clone
+
+      peer
     end
   end
 end

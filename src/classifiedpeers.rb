@@ -73,6 +73,7 @@ class ClassifiedPeers
   # Peers that we have an established connection to, and are not choked and are not interested.
   attr_accessor :unchokedUninterestedPeers
 
+  # Peers that we have an established connection to, and are interested
   attr_accessor :interestedPeers
 
   attr_accessor :uninterestedPeers

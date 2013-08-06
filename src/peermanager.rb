@@ -89,7 +89,7 @@ module QuartzTorrent
       # Step 2: Update the downloaders to be the interested peers with the best upload rate.
 
       if classifiedPeers.interestedPeers.size > 0
-        bestUploadInterested = classifiedPeers.interestedPeers.sort{ |a,b| a.uploadRate <=> b.uploadRate}.first(@targetUnchokedPeerCount)
+        bestUploadInterested = classifiedPeers.interestedPeers.sort{ |a,b| a.uploadRate.value <=> b.uploadRate.value}.first(@targetUnchokedPeerCount)
 
         # If the optimistic unchoke peer is interested, he counts as a downloader.
         if @optimisticUnchokePeer && @optimisticUnchokePeer.peerInterested
@@ -124,10 +124,10 @@ module QuartzTorrent
       if classifiedPeers.uninterestedPeers.size > 0
         classifiedPeers.uninterestedPeers.each do |peer|
           if @downloaders.size > 0
-            if peer.uploadRate > @downloaders[0].uploadRate && peer.peerChoked
+            if peer.uploadRate.value > @downloaders[0].uploadRate.value && peer.peerChoked
               result.unchoke.push peer
             end
-            if peer.uploadRate < @downloaders[0].uploadRate && ! peer.peerChoked && ! peer.eql?(@optimisticUnchokePeer)
+            if peer.uploadRate.value < @downloaders[0].uploadRate.value && ! peer.peerChoked && ! peer.eql?(@optimisticUnchokePeer)
               result.choke.push peer
             end
           else

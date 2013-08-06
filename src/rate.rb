@@ -18,7 +18,7 @@ module QuartzTorrent
       now = Time.new
       # Age out old samples.
       @samples.delete_if{ |s| now - s.time > @window }
-      return nil if @samples.empty?
+      return 0 if @samples.empty?
       @samples.reduce(0){ |memo, s| memo + s.value } / (@samples.last.time - @samples.first.time)
     end
 

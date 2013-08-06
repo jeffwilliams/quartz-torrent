@@ -30,7 +30,7 @@ module QuartzTorrent
       params['uploaded'] = dynamicParams.uploaded.to_s
       params['downloaded'] = dynamicParams.downloaded.to_s
       params['left'] = dynamicParams.left.to_s
-      params['compact'] = "0"
+      params['compact'] = "1"
       params['no_peer_id'] = "1"
       if ! @startSent
         event = :started  
@@ -73,7 +73,14 @@ module QuartzTorrent
         end
       else 
         # Non-compact format
-        raise "Non-compact peer format not implemented"
+        peersProp.each do |peer|
+          ip = peer['ip'] 
+          port = peer['port'] 
+          if ip && port
+            peers.push TrackerPeer.new(ip, port)
+          end
+        end
+        #raise "Non-compact peer format not implemented"
       end
       peers
     end

@@ -102,6 +102,27 @@ class TestBitfield < MiniTest::Unit::TestCase
     assert !bf.allSet?
   end
 
+  def testAllClear
+    bf = QuartzTorrent::Bitfield.new(16)
+    assert bf.allClear?
+  
+    16.times{ |i| bf.set i }
+    assert !bf.allClear?
+    bf.clear 7
+    assert !bf.allClear?
+    bf.clear 13
+    assert !bf.allClear?
+
+    bf = QuartzTorrent::Bitfield.new(5)
+    5.times{ |i| bf.set i }
+    assert !bf.allClear?, "A 5-bit bitset has all bits set but it allSet? returns false"
+
+    bf = QuartzTorrent::Bitfield.new(13)
+    assert bf.allClear?
+    bf.set 12
+    assert !bf.allClear?
+  end
+
   def testFill
     bf = QuartzTorrent::Bitfield.new(10)
     bf.setAll

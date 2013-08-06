@@ -202,7 +202,7 @@ module QuartzTorrent
       super(MessageHave)
     end
 
-    attr_accessor :peiceIndex
+    attr_accessor :pieceIndex
   
     def payloadLength
       4
@@ -210,16 +210,16 @@ module QuartzTorrent
 
     def serializeTo(io)
       super(io)
-      io.write [@peiceIndex].pack("N")
+      io.write [@pieceIndex].pack("N")
     end
 
     def unserialize(payload)
-      @peiceIndex = payload.unpack["N"][0]
+      @pieceIndex = payload.unpack("N")[0]
     end
 
     def to_s
       s = super
-      s + ": peice index=#{@peiceIndex}"
+      s + ": piece index=#{@pieceIndex}"
     end
   end
 
@@ -269,7 +269,7 @@ module QuartzTorrent
 
     def to_s
       s = super
-      s + ": peice index=#{@peiceIndex}, block offset=#{@blockOffset}, block length=#{@blockLength}"
+      s + ": piece index=#{@pieceIndex}, block offset=#{@blockOffset}, block length=#{@blockLength}"
     end
   end
  
@@ -297,7 +297,7 @@ module QuartzTorrent
 
     def to_s
       s = super
-      s + ": peice index=#{@peiceIndex}, block offset=#{@blockOffset}"
+      s + ": piece index=#{@pieceIndex}, block offset=#{@blockOffset}"
     end
   end
  
@@ -325,7 +325,7 @@ module QuartzTorrent
 
     def to_s
       s = super
-      s + ": peice index=#{@peiceIndex}, block offset=#{@blockOffset}, block length=#{@blockLength}"
+      s + ": piece index=#{@pieceIndex}, block offset=#{@blockOffset}, block length=#{@blockLength}"
     end
   end
 

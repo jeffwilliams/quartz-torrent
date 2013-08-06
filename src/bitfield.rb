@@ -48,13 +48,28 @@ module QuartzTorrent
     def allSet?
       # Check all but last byte quickly
       (@data.length-1).times do |i|
-        return false if @data[i] & 0xff != 0xff
+        return false if @data[i] != 0xff
       end
       # Check last byte slowly
       toCheck = @length % 8
       toCheck = 8 if toCheck == 0
       ((@length-toCheck)..(@length-1)).each do |i|
         return false if ! set?(i)
+      end
+      true
+    end
+
+    # Are all bits in the Bitfield clear?
+    def allClear?
+      # Check all but last byte quickly
+      (@data.length-1).times do |i|
+        return false if @data[i] != 0
+      end
+      # Check last byte slowly
+      toCheck = @length % 8
+      toCheck = 8 if toCheck == 0
+      ((@length-toCheck)..(@length-1)).each do |i|
+        return false if set?(i)
       end
       true
     end
@@ -67,6 +82,8 @@ module QuartzTorrent
       @data.fill(0x00)
     end
 
+    # Calculate the union of this bitfield and the passed bitfield, and 
+    # return the result as a new bitfield. 
     def union(bitfield)
       raise "That's not a bitfield" if ! bitfield.is_a?(Bitfield)
       raise "bitfield lengths must be equal" if ! bitfield.length == length
@@ -78,11 +95,38 @@ module QuartzTorrent
       result
     end
 
+    # Calculate the intersection of this bitfield and the passed bitfield, and 
+    # return the result as a new bitfield. 
+    def intersection(bitfield)
+      raise "That's not a bitfield" if ! bitfield.is_a?(Bitfield)
+      raise "bitfield lengths must be equal" if ! bitfield.length == length
+
+      newbitfield = Bitfield.new(length)
+      newbitfield.copyFrom(self)
+      newbitfield.intersection!(bitfield)
+    end
+
+    def intersection!(bitfield)
+      raise "That's not a bitfield" if ! bitfield.is_a?(Bitfield)
+      raise "bitfield lengths must be equal" if ! bitfield.length == length
+        
+      (@data.length).times do |i|
+        @data[i] = @data[i] & bitfield.data[i]
+      end
+      self
+    end
+
     def copyFrom(bitfield)
       raise "Source bitfield is too small (#{bitfield.length} < #{length})" if bitfield.length < length
       (@data.length).times do |i|
         @data[i] = bitfield.data[i]
       end
+    end
+
+    def compliment
+      bitfield = Bitfield.new(length)
+      bitfield.copyFrom(self)
+      bitfield.compliment!
     end
 
     def compliment!
