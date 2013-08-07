@@ -89,7 +89,7 @@ module QuartzTorrent
       # Step 2: Update the downloaders to be the interested peers with the best upload rate.
 
       if classifiedPeers.interestedPeers.size > 0
-        bestUploadInterested = classifiedPeers.interestedPeers.sort{ |a,b| a.uploadRate.value <=> b.uploadRate.value}.first(@targetUnchokedPeerCount)
+        bestUploadInterested = classifiedPeers.interestedPeers.sort{ |a,b| b.uploadRate.value <=> a.uploadRate.value}.first(@targetUnchokedPeerCount)
 
         # If the optimistic unchoke peer is interested, he counts as a downloader.
         if @optimisticUnchokePeer && @optimisticUnchokePeer.peerInterested
@@ -121,19 +121,21 @@ module QuartzTorrent
       end
 
       # Step 3: Unchoke all peers that have a better upload rate but are not interested.
-      if classifiedPeers.uninterestedPeers.size > 0
-        classifiedPeers.uninterestedPeers.each do |peer|
-          if @downloaders.size > 0
+      #         However, if we just started up, only unchoke targetUnchokedPeerCount peers.
+      if @downloaders.size > 0
+        if classifiedPeers.uninterestedPeers.size > 0
+          classifiedPeers.uninterestedPeers.each do |peer|
             if peer.uploadRate.value > @downloaders[0].uploadRate.value && peer.peerChoked
               result.unchoke.push peer
             end
             if peer.uploadRate.value < @downloaders[0].uploadRate.value && ! peer.peerChoked && ! peer.eql?(@optimisticUnchokePeer)
               result.choke.push peer
             end
-          else
-            result.unchoke.push peer if peer.peerChoked
           end
         end
+      else
+        # No downloaders yet, so we can't tell who is fast or not. Unchoke some
+        result.unchoke = result.unchoke.concat(classifiedPeers.uninterestedPeers.first(@targetUnchokedPeerCount))
       end
 
       @logger.debug "Manage peers result: #{result}"

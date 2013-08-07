@@ -101,9 +101,6 @@ module QuartzTorrent
 
   class UdpTrackerConnectRequest < UdpTrackerRequest
     def serialize
-      $logger.debug "UdpTrackerConnectResponse.serialize: action: #{@action}"
-      $logger.debug "UdpTrackerConnectResponse.serialize: transactionId: #{@transactionId}"
-      $logger.debug "UdpTrackerConnectResponse.serialize: connectionId: #{@connectionId}"
       result = UdpTrackerMessage::packAsNetworkOrder(@connectionId, 8)
       result << UdpTrackerMessage::packAsNetworkOrder(@action, 4)
       result << UdpTrackerMessage::packAsNetworkOrder(@transactionId, 4)
@@ -122,9 +119,6 @@ module QuartzTorrent
       result.action = UdpTrackerMessage::unpackNetworkOrder(msg,4)
       result.transactionId = UdpTrackerMessage::unpackNetworkOrder(msg[4,4],4)
       result.connectionId = UdpTrackerMessage::unpackNetworkOrder(msg[8,8],8)
-      $logger.debug "UdpTrackerConnectResponse.unserialize: action: #{result.action}"
-      $logger.debug "UdpTrackerConnectResponse.unserialize: transactionId: #{result.transactionId} (raw hex: 0x#{self.tohex(msg[4,4])})"
-      $logger.debug "UdpTrackerConnectResponse.unserialize: connectionId: #{result.connectionId}"
       raise "Invalid connect response: action is not connect" if result.action != UdpTrackerMessage::ActionConnect
       result
     end
@@ -242,8 +236,6 @@ module QuartzTorrent
       result.leechers = UdpTrackerMessage::unpackNetworkOrder(msg[12,4],4)
       result.seeders = UdpTrackerMessage::unpackNetworkOrder(msg[16,4],4)
       
-      $logger.debug "UdpTrackerAnnounceResponse.unserialize: Raw message length is #{msg.length}"
-  
       index = 20
       while index+6 < msg.length
         result.ips.push msg[index,4]

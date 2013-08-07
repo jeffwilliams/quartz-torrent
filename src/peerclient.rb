@@ -66,6 +66,8 @@ module QuartzTorrent
       @bytesUploaded = torrentData.bytesUploaded
       @bytesDownloaded = torrentData.bytesDownloaded
       @completedBytes = torrentData.blockState.nil? ? 0 : torrentData.blockState.completedLength
+      # This should really be a copy:
+      @completePieceBitfield = torrentData.blockState.nil? ? nil : torrentData.blockState.completePieceBitfield
       buildPeersList(torrentData)
       @downloadRate = @peers.reduce(0){ |memo, peer| memo + peer.uploadRate }
       @uploadRate = @peers.reduce(0){ |memo, peer| memo + peer.downloadRate }
@@ -78,6 +80,7 @@ module QuartzTorrent
     attr_reader :completedBytes
     attr_reader :peers
     attr_reader :state
+    attr_reader :completePieceBitfield
   
     private
     def buildPeersList(torrentData)
@@ -191,7 +194,7 @@ module QuartzTorrent
             close
             return
           else
-            if peer.trackerPeer.ip == addr && peer.trackerPeer.port == port
+            if existingPeer.trackerPeer.ip == addr && existingPeer.trackerPeer.port == port
               peer = existingPeer
             end
           end
@@ -217,7 +220,7 @@ module QuartzTorrent
       peer.bitfield = Bitfield.new(torrentData.metainfo.info.pieces.length)
 
       # Send bitfield
-      sendBitfield(currentIo, torrentData.blockState.completePieceBitfield)
+      sendBitfield(currentIo, torrentData.blockState.completePieceBitfield) if torrentData.blockState
 
       setMetaInfo(peer)
     end
@@ -243,7 +246,7 @@ module QuartzTorrent
       @logger.info "Done sending handshake."
 
       # Send bitfield
-      sendBitfield(currentIo, torrentData.blockState.completePieceBitfield)
+      sendBitfield(currentIo, torrentData.blockState.completePieceBitfield) if torrentData.blockState
     end
 
     def recvData(peer)
@@ -351,8 +354,10 @@ module QuartzTorrent
       elsif metadata.is_a?(Array) && metadata[0] == :get_torrent_data
         @torrentData.each do |k,v|
           begin
-            v = TorrentDataDelegate.new(v)
-            metadata[1][k] = v
+            if metadata[3].nil? || k == metadata[3]
+              v = TorrentDataDelegate.new(v)
+              metadata[1][k] = v
+            end
           rescue
             @logger.error "Error building torrent data response for user: #{$!}"
             @logger.error "#{$!.backtrace.join("\n")}"
@@ -380,12 +385,13 @@ module QuartzTorrent
     # Get a hash of new TorrentDataDelegate objects keyed by torrent infohash.
     # This method is meant to be called from a different thread than the one
     # the reactor is running in. This method is not immediate but blocks until the
-    # data is prepared.
-    def getDelegateTorrentData
+    # data is prepared. 
+    # If infoHash is passed, only that torrent data is returned (still in a hashtable; just one entry)
+    def getDelegateTorrentData(infoHash = nil)
       # Use an immediate, non-recurring timer.
       result = {}
       semaphore = Semaphore.new
-      @reactor.scheduleTimer(0, [:get_torrent_data, result, semaphore], false, true)
+      @reactor.scheduleTimer(0, [:get_torrent_data, result, semaphore, infoHash], false, true)
       semaphore.wait
       result
     end
@@ -396,7 +402,7 @@ module QuartzTorrent
 
       torrentData = @torrentData[peer.infoHash]
       # Are we tracking this torrent?
-      if torrentData
+      if torrentData && torrentData.blockState
         # For any outstanding requests, mark that we no longer have requested them
         peer.requestedBlocks.each do |blockIndex, b|
           blockInfo = torrentData.blockState.createBlockinfoByBlockIndex(blockIndex)
@@ -538,9 +544,17 @@ module QuartzTorrent
 
       classifiedPeers = ClassifiedPeers.new torrentData.peers.all
 
+      if ! torrentData.blockState
+        @logger.error "Request blocks peers: no blockstate yet."
+        return
+      end
+
       blockInfos = torrentData.blockState.findRequestableBlocks(classifiedPeers, 100)
       blockInfos.each do |blockInfo|
-        peer = blockInfo.peers.first
+        # Pick one of the peers that has the piece to download it from. Pick one of the
+        # peers with the top 3 upload rates.
+        #peer = blockInfo.peers.first
+        peer = blockInfo.peers.sort{ |a,b| b.uploadRate.value <=> a.uploadRate.value}.first(3).shuffle.first
         withPeersIo(peer, "requesting block") do |io|
           if ! peer.amInterested
             # Let this peer know that I'm interested if I haven't yet.
@@ -566,6 +580,11 @@ module QuartzTorrent
       torrentData = @torrentData[peer.infoHash]
       if ! torrentData
         @logger.error "Receive piece: torrent data for torrent #{bytesToHex(peer.infoHash)} not found."
+        return
+      end
+
+      if ! torrentData.blockState
+        @logger.error "Receive piece: no blockstate yet."
         return
       end
 
@@ -605,6 +624,11 @@ module QuartzTorrent
         return
       end
 
+      if ! torrentData.blockState
+        @logger.error "Bitfield: no blockstate yet."
+        return
+      end
+
       peer.bitfield = Bitfield.new(torrentData.metainfo.info.pieces.length)
       peer.bitfield.copyFrom(msg.bitfield)
 
@@ -625,6 +649,11 @@ module QuartzTorrent
       torrentData = @torrentData[peer.infoHash]
       if ! torrentData
         @logger.error "Have: torrent data for torrent #{bytesToHex(peer.infoHash)} not found."
+        return
+      end
+
+      if ! torrentData.blockState
+        @logger.error "Have: no blockstate yet."
         return
       end
       
@@ -779,6 +808,7 @@ module QuartzTorrent
 
     def sendUninterested(torrentData)
       # If we are no longer interested in peers once this piece has been completed, let them know
+      return if ! torrentData.blockState
       needed = torrentData.blockState.completePieceBitfield.compliment
       
       classifiedPeers = ClassifiedPeers.new torrentData.peers.all
@@ -866,10 +896,10 @@ module QuartzTorrent
     end
 
     # Get a hash of new TorrentDataDelegate objects keyed by torrent infohash.
-    def torrentData
+    def torrentData(infoHash = nil)
       # This will have to work by putting an event in the handler's queue, and blocking for a response.
       # The handler will build a response and return it.
-      @handler.getDelegateTorrentData
+      @handler.getDelegateTorrentData(infoHash)
     end
     
 

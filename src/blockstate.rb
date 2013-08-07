@@ -75,6 +75,7 @@ module QuartzTorrent
 
       @requestedBlocks = Bitfield.new(@numBlocks)
       @requestedBlocks.clearAll
+      @firstPieceToDownload = nil
     end
  
     attr_reader :blockSize
@@ -113,7 +114,6 @@ module QuartzTorrent
         rarityOrder[i] = [rarity[i],i]
       end
       rarityOrder.sort!{ |a,b| a[0] <=> b[0] }
-      # now second element of each pair 
 
       # 3. Randomize the list order within classes of the same rarity.
       left = 0
@@ -123,7 +123,7 @@ module QuartzTorrent
           # New range
           rangeLen = i-left+1
           
-          arrayShuffleRange!(rarityOrder, left, rangeLen)           
+          arrayShuffleRange!(rarityOrder, left, rangeLen)
 
           left = i+1
           leftVal = rarityOrder[left][0] if left < @numPieces
@@ -135,21 +135,66 @@ module QuartzTorrent
       requestable = @completeBlocks.union(@requestedBlocks).compliment!
 
       # 4. Rarest pieces first, find blocks that are available for download.
+
+      # 4. Decide which blocks to download.
+      #    - If we already have a piece, then in order of rarest pieces first, find blocks that are available for download.
+      #    - If we don't have a piece, our goal is to complete a piece so that we are valuable to the swarm. If we aren't
+      #      working on one, or the one we were working on is no longer available, pick the rarest piece and work on that.
       result = []
-      rarityOrder.each do |pair|
-        pieceIndex = pair[1]
-        eachBlockInPiece(pieceIndex) do |blockIndex|
+
+      haveSomePieces = false
+      @numPieces.times do |pieceIndex|
+        if pieceCompleted?(pieceIndex) 
+          haveSomePieces = true
+          break
+        end
+      end
+        
+      if haveSomePieces
+        # We already have a piece
+        rarityOrder.each do |pair|
+          pieceIndex = pair[1]
           peersWithPiece = peersHavingPiece[pieceIndex]
-          if requestable.set?(blockIndex) && peersWithPiece.size > 0
-            # If this is the very last block, then it might be smaller than the rest.
-            blockSize = @blockSize
-            blockSize = @lastBlockLength if blockIndex == @numBlocks-1
-            offsetWithinPiece = (blockIndex % @blocksPerPiece)*@blockSize
-            result.push BlockInfo.new(pieceIndex, offsetWithinPiece, blockSize, peersHavingPiece[pieceIndex], blockIndex)
-            break if numToReturn && result.size >= numToReturn
+          if peersWithPiece && peersWithPiece.size > 0
+            eachBlockInPiece(pieceIndex) do |blockIndex|
+              if requestable.set?(blockIndex) 
+                result.push createBlockinfoByBlockIndex(pieceIndex, peersWithPiece, blockIndex)
+                break if numToReturn && result.size >= numToReturn
+              end
+            end
+          end
+          break if numToReturn && result.size >= numToReturn
+        end
+      else
+        # We don't have a piece
+        chooseNewPiece = true
+        if @firstPieceToDownload
+          peersWithPiece = peersHavingPiece[@firstPieceToDownload]
+          chooseNewPiece = false if peersWithPiece && peersWithPiece.size > 0
+        end
+
+        if chooseNewPiece
+          @firstPieceToDownload = nil
+          rarityOrder.each do |pair|
+            pieceIndex = pair[1]
+            peersWithPiece = peersHavingPiece[pieceIndex]
+            if peersWithPiece && peersWithPiece.size > 0
+              @firstPieceToDownload = pieceIndex
+              @logger.info "Will download first piece #{@firstPieceToDownload}"
+              break
+            end
           end
         end
-        break if numToReturn && result.size >= numToReturn
+
+        if @firstPieceToDownload
+          peersWithPiece = peersHavingPiece[@firstPieceToDownload]
+          eachBlockInPiece(@firstPieceToDownload) do |blockIndex|
+            if requestable.set?(blockIndex)
+              result.push createBlockinfoByBlockIndex(@firstPieceToDownload, peersWithPiece, blockIndex)
+              break if numToReturn && result.size >= numToReturn
+            end
+          end
+        end
       end
 
       result
@@ -233,6 +278,14 @@ module QuartzTorrent
     length = @blockSize
     raise "offset in piece is not divisible by block size" if offset % @blockSize != 0
     BlockInfo.new(pieceIndex, offset, length, [], blockIndex)
+  end
+
+  def createBlockinfoByBlockIndex(pieceIndex, peersWithPiece, blockIndex)
+    # If this is the very last block, then it might be smaller than the rest.
+    blockSize = @blockSize
+    blockSize = @lastBlockLength if blockIndex == @numBlocks-1
+    offsetWithinPiece = (blockIndex % @blocksPerPiece)*@blockSize
+    BlockInfo.new(pieceIndex, offsetWithinPiece, blockSize, peersWithPiece, blockIndex)
   end
 
   private

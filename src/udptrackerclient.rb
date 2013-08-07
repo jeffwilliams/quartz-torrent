@@ -5,9 +5,10 @@ module QuartzTorrent
     ReceiveLength = 620 
     def initialize(metainfo)
       super(metainfo)
+      @logger = LogManager.getLogger("udp_tracker_client")
       if metainfo.announce =~ /udp:\/\/([^:]+):(\d+)/
         @host = $1
-        @port = $2
+        @trackerPort = $2
       else
         throw "UDP Tracker announce URL is invalid: #{metainfo.announce}"
       end
@@ -25,7 +26,9 @@ module QuartzTorrent
       end
 
       socket = UDPSocket.new
-      socket.connect @host, @port
+      socket.connect @host, @trackerPort
+
+      @logger.debug "Sending UDP tracker request to #{@host}:#{@trackerPort}"
 
       # Send connect request
       req = UdpTrackerConnectRequest.new

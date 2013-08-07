@@ -42,6 +42,12 @@ def waddstrnw(win, str)
   Ncurses::waddstr win, trunc
 end
 
+def torrentDisplayName(torrent)
+  name = torrent.metainfo.info.name
+  name = bytesToHex(infohash) if ! name || name.length == 0
+  name
+end
+
 class WindowSizeChangeDetector
   def initialize
     @screenCols = Ncurses.COLS
@@ -66,11 +72,16 @@ end
 class Screen
   def initialize
     @peerClient = nil
+    @screenManager = nil
   end
 
   def onKey(k)
   end
-  
+ 
+  def screenManager=(m)
+    @screenManager = m
+  end
+ 
   attr_accessor :peerClient
 end
 
@@ -78,12 +89,17 @@ class SummaryScreen < Screen
   def initialize(window)
     @window = window
     @selectedIndex = -1
+    @torrents = nil
   end
 
   def draw
     Ncurses::werase @window
     Ncurses::wmove(@window, 0,0)
-    waddstrnw @window, "Time: #{Time.new}\n"
+    ColorScheme.apply(ColorScheme::HeadingColorPair)
+    Ncurses.attron(Ncurses::A_BOLD)
+    waddstrnw @window, "=== QuartzTorrent Downloader  [#{Time.new}] ===\n\n"
+    Ncurses.attroff(Ncurses::A_BOLD) 
+    ColorScheme.apply(ColorScheme::NormalColorPair)
 
     drawTorrents
   end
@@ -96,9 +112,20 @@ class SummaryScreen < Screen
     end
   end
 
+  def currentTorrent
+    return nil if ! @torrents
+    @selectedIndex = -1 if @selectedIndex < -1  || @selectedIndex >= @torrents.length
+    i = 0
+    @torrents.each do |infohash, torrent|
+      return torrent if i == @selectedIndex 
+      i += 1  
+    end
+    return nil
+  end
+
   private
-  def summaryLine(state, size, uploadRate, downloadRate, progress)
-    "     %12s  %9s  Rate: %6s | %6s  Progress: %5s\n" % [state, size, uploadRate, downloadRate, progress]
+  def summaryLine(state, size, uploadRate, downloadRate, completePieces, totalPieces, progress)
+    "     %12s  %9s  Rate: %6s | %6s  Pieces: %4d/%4d Progress: %5s\n" % [state, size, uploadRate, downloadRate, completePieces, totalPieces, progress]
   end
 
   def drawTorrents
@@ -109,10 +136,11 @@ class SummaryScreen < Screen
       return
     end
  
-    torrents = @peerClient.torrentData
-    torrents.each do |infohash, torrent|
-      name = torrent.metainfo.info.name
-      name = bytesToHex(infohash) if ! name || name.length == 0
+    @torrents = @peerClient.torrentData
+    @torrents.each do |infohash, torrent|
+      name = torrentDisplayName(torrent)
+      #name = torrent.metainfo.info.name
+      #name = bytesToHex(infohash) if ! name || name.length == 0
 
       pct = torrent.completedBytes.to_f / torrent.metainfo.info.dataLength.to_f * 100.0
       pct = "%.1f%%" % pct
@@ -124,12 +152,18 @@ class SummaryScreen < Screen
         state = state.to_s
       end
 
+      completePieces = 0
+      completePieces = torrent.completePieceBitfield.countSet if torrent.completePieceBitfield
+      totalPieces = torrent.metainfo.info.pieces.length
+
       display = [name + "\n"]
       display.push summaryLine(
         state, 
         Formatter.formatSize(torrent.metainfo.info.dataLength),
         Formatter.formatSpeed(torrent.uploadRate),
         Formatter.formatSpeed(torrent.downloadRate),
+        completePieces,
+        totalPieces,
         pct)
       entries.push display
     end
@@ -150,13 +184,136 @@ end
 class DetailsScreen < Screen
   def initialize(window)
     @window = window
+    @infoHash = nil
+  end
+
+
+  def infoHash=(infoHash)
+    @infoHash = infoHash
   end
 
   def draw
     Ncurses::werase @window
     Ncurses::wmove(@window, 0,0)
-    waddstrnw @window, "Thing_being_downloaded.zip\n"
-    waddstrnw @window, "Peers: 50 [4 un, 46 choked] [30 interested, 20 un]"
+    str = "nil"
+    if @infoHash
+      str = bytesToHex(@infoHash)
+    end
+
+    ColorScheme.apply(ColorScheme::HeadingColorPair)
+    Ncurses.attron(Ncurses::A_BOLD)
+    waddstrnw @window, "=== QuartzTorrent Downloader  [#{Time.new}] ===\n\n"
+    Ncurses.attroff(Ncurses::A_BOLD) 
+    ColorScheme.apply(ColorScheme::NormalColorPair)
+
+    if ! @peerClient
+      waddstrnw @window, "Loading..."
+      return
+    end
+ 
+    @torrents = @peerClient.torrentData(@infoHash)
+    torrent = nil
+    @torrents.each do |infohash, t|
+      torrent = t
+      break
+    end
+    if ! torrent
+      waddstrnw @window, "No such torrent."
+      return
+    end
+
+    name = torrentDisplayName(torrent)
+
+    waddstrnw @window, "Details for #{name}\n"
+
+    classified = ClassifiedPeers.new(torrent.peers)
+    unchoked = classified.unchokedInterestedPeers.size + classified.unchokedUninterestedPeers.size
+    choked = classified.chokedInterestedPeers.size + classified.chokedUninterestedPeers.size
+    interested = classified.interestedPeers.size
+    uninterested = classified.uninterestedPeers.size
+    established = classified.establishedPeers.size
+    total = torrent.peers.size
+
+    waddstrnw @window, ("Peers: %3d/%3d  choked %3d:%3d  interested %3d:%3d\n" % [established, total, choked, unchoked, interested, uninterested] )
+    waddstrnw @window, "\n"
+
+    waddstrnw @window, "Peer details:\n"
+
+    # Order peers by usefulness.
+    torrent.peers.sort! do |a,b|
+      rc = stateSortValue(a.state) <=> stateSortValue(b.state)
+      rc = b.uploadRate <=> a.uploadRate if rc == 0
+      rc = b.downloadRate <=> a.downloadRate if rc == 0
+      rc = chokedSortValue(a.amChoked) <=> chokedSortValue(b.amChoked) if rc == 0
+      rc
+    end
+
+    maxy, maxx = getmaxyx(@window)
+    cury, curx = getyx(@window)
+    torrent.peers.each do |peer|
+      break if cury > maxy 
+      showPeer(peer)
+      cury += 1
+    end
+  end
+
+  private
+  def stateSortValue(state)
+    if state == :established
+      0
+    elsif state == :handshaking
+      1
+    else
+      2
+    end
+  end
+
+  def chokedSortValue(choked)
+    if ! choked
+      0
+    else
+      1
+    end
+  end
+  
+  def showPeer(peer)
+
+    flags = ""
+    flags << (peer.peerChoked ? "choked" : "!choked" )
+    flags << ","
+    flags << (peer.amChoked ? "choking" : "!choking" )
+    flags << ","
+    flags << (peer.peerInterested ? "interested" : "!interested" )
+    flags << ","
+    flags << (peer.amInterested ? "interesting" : "!interesting" )
+
+    id = peer.trackerPeer.id
+    if id
+      newid = ""
+      id.each_byte do |b|
+        if b > 0x1f && b < 0x7f
+          newid << b
+        else
+          newid << '?'
+        end
+      end
+      id = newid
+    else
+      id = ''
+    end
+  
+    # id, host:port, upload, download, state, flags "
+    str = "  %20s %-21s Rate: %11s|%-11s %-12s %s\n" % 
+      [
+        id,
+        "#{peer.trackerPeer.ip}:#{peer.trackerPeer.port}",
+        Formatter.formatSpeed(peer.uploadRate),
+        Formatter.formatSpeed(peer.downloadRate),
+        peer.state.to_s,
+        flags       
+      ]
+    
+    waddstrnw @window, str
   end
 end
 
@@ -177,15 +334,22 @@ class ScreenManager
   def initialize
     @screens = {}
     @current = nil
+    @currentId = nil
   end
 
   def add(id, screen)
     @screens[id] = screen
+    screen.screenManager = self
   end
 
   def set(id)
     @current = @screens[id]
+    @currentId = id
     draw
+  end
+
+  def get(id)
+    @screens[id]
   end
 
   def draw
@@ -201,6 +365,26 @@ class ScreenManager
       v.peerClient=peerClient
     end
   end
+
+  def currentId
+    @currentId
+  end
+
+  attr_reader :current
+end
+
+class ColorScheme
+  NormalColorPair = 1
+  HeadingColorPair = 2
+
+  def self.init
+    Ncurses.init_pair(NormalColorPair, Ncurses::COLOR_WHITE, Ncurses::COLOR_BLUE)
+    Ncurses.init_pair(HeadingColorPair, Ncurses::COLOR_YELLOW, Ncurses::COLOR_BLUE)
+  end  
+
+  def self.apply(colorPair)
+    Ncurses.attron(Ncurses::COLOR_PAIR(colorPair));
+  end
 end
 
 def initializeCurses
@@ -211,9 +395,12 @@ def initializeCurses
   Ncurses.start_color
   $log.puts "Terminal supports #{Ncurses.COLORS} colors"
 
-  Ncurses.init_pair(1, Ncurses::COLOR_WHITE, Ncurses::COLOR_BLUE)
+  ColorScheme.init
 
-  Ncurses.attron(Ncurses::COLOR_PAIR(1));
+  #Ncurses.init_pair(ColorScheme::NormalColorPair, Ncurses::COLOR_WHITE, Ncurses::COLOR_BLUE)
+
+  ColorScheme.apply(ColorScheme::NormalColorPair)
+  #Ncurses.attron(Ncurses::COLOR_PAIR(1));
 
   # Turn off line-buffering
   Ncurses::cbreak
@@ -228,7 +415,7 @@ def initializeCurses
 
 
   # Set the window background (used when clearing)
-  Ncurses::wbkgdset(Ncurses::stdscr, Ncurses::COLOR_PAIR(1))
+  Ncurses::wbkgdset(Ncurses::stdscr, Ncurses::COLOR_PAIR(ColorScheme::NormalColorPair))
 end
 
 def initializeLogging(file)
@@ -236,9 +423,10 @@ def initializeLogging(file)
   FileUtils.rm file if File.exists?(file)
   LogManager.logFile = file
   LogManager.defaultLevel = :info
-  LogManager.setLevel "peer_manager", :info
+  LogManager.setLevel "peer_manager", :debug
   LogManager.setLevel "tracker_client", :debug
   LogManager.setLevel "http_tracker_client", :debug
+  LogManager.setLevel "udp_tracker_client", :debug
   LogManager.setLevel "peerclient", :debug
   LogManager.setLevel "peerclient.reactor", :info
   #LogManager.setLevel "peerclient.reactor", :debug
@@ -318,8 +506,16 @@ begin
           scrManager.set :log
         elsif key.chr == 's'
           scrManager.set :summary
-        elsif key.chr == 'd'
-          scrManager.set :details
+        elsif key.chr == "\n"
+          # Details
+          if scrManager.currentId == :summary
+            torrent = scrManager.current.currentTorrent
+            if torrent
+              detailsScreen = scrManager.get :details
+              detailsScreen.infoHash = torrent.metainfo.infoHash
+              scrManager.set :details
+            end
+          end
         else
           scrManager.onKey key
         end
