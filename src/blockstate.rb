@@ -26,6 +26,7 @@ module QuartzTorrent
       m.blockLength = @length
       m
     end
+
   end
 
   # Any given torrent is broken into pieces. Those pieces are broken into blocks.
@@ -75,7 +76,7 @@ module QuartzTorrent
 
       @requestedBlocks = Bitfield.new(@numBlocks)
       @requestedBlocks.clearAll
-      @firstPieceToDownload = nil
+      @currentPieces = []
     end
  
     attr_reader :blockSize
@@ -83,27 +84,203 @@ module QuartzTorrent
     # Total length of the torrent in bytes.
     attr_reader :totalLength
 
-    # Return a list of BlockInfo objects representing blocks that 
-    # can be requested from peers that we need and aren't already requested.
     def findRequestableBlocks(classifiedPeers, numToReturn = nil)
-      #@logger.debug "findRequestableBlocks: number of requestable peers: #{classifiedPeers.requestablePeers.size}"
-      return [] if classifiedPeers.requestablePeers.size == 0
+      # Have a list of the current pieces we are working on. Each time this method is 
+      # called, check the blocks in the pieces in list order to find the blocks to return
+      # for requesting. If a piece is completed, remove it from this list. If we need more blocks
+      # than there are available in the list, add more pieces to the end of the list (in rarest-first
+      # order).
+      result = []
 
-      # 0. Make a list of each peer having the specified piece
+      peersHavingPiece = computePeersHavingPiece(classifiedPeers)
+      requestable = @completeBlocks.union(@requestedBlocks).compliment!
+      rarityOrder = nil
+
+      currentPiece = 0
+      while true
+        if currentPiece >= @currentPieces.length
+          # Add more pieces in rarest-first order. If there are no more pieces, break.
+          rarityOrder = computeRarity(classifiedPeers) if ! rarityOrder
+          added = false
+          rarityOrder.each do |pair|
+            pieceIndex = pair[1]
+            peersWithPiece = peersHavingPiece[pieceIndex]
+            if peersWithPiece && peersWithPiece.size > 0 && !@currentPieces.index(pieceIndex) && ! pieceCompleted?(pieceIndex)
+              @logger.debug "Adding piece #{pieceIndex} to the current downloading list"
+              @currentPieces.push pieceIndex
+              added = true
+              break
+            end
+          end
+          if ! added          
+            @logger.debug "There are no more pieces to add to the current downloading list"
+            break
+          end
+        end        
+    
+        currentPieceIndex = @currentPieces[currentPiece]
+
+        if pieceCompleted?(currentPieceIndex)
+          @logger.debug "Piece #{currentPieceIndex} complete so removing it from the current downloading list" 
+          @currentPieces.delete_at(currentPiece)
+          next
+        end
+
+        peersWithPiece = peersHavingPiece[currentPieceIndex]
+        if !peersWithPiece || peersWithPiece.size == 0
+          @logger.debug "No peers have piece #{currentPieceIndex}" 
+          currentPiece += 1
+          next
+        end
+
+        eachBlockInPiece(currentPieceIndex) do |blockIndex|
+          if requestable.set?(blockIndex)
+            result.push createBlockinfoByPieceAndBlockIndex(currentPieceIndex, peersWithPiece, blockIndex)
+            break if numToReturn && result.size >= numToReturn
+          end
+        end           
+
+        break if numToReturn && result.size >= numToReturn
+        currentPiece += 1
+      end
+
+      result
+    end
+
+    def setBlockRequested(blockInfo, bool)
+      if bool
+        @requestedBlocks.set blockInfo.blockIndex
+      else
+        @requestedBlocks.clear blockInfo.blockIndex
+      end
+    end
+
+    # If this block completes the piece and a block is passed, the pieceIndex is yielded to the block.
+    def setBlockCompleted(pieceIndex, blockOffset, bool, clearRequested = :clear_requested)
+      bi = blockIndexFromPieceAndOffset(pieceIndex, blockOffset)
+      @requestedBlocks.clear bi if clearRequested == :clear_requested
+      if bool
+        @completeBlocks.set bi
+        yield pieceIndex if pieceCompleted?(pieceIndex) && block_given?
+      else
+        @completeBlocks.clear bi
+      end
+    end
+
+    def setPieceCompleted(pieceIndex, bool)
+      eachBlockInPiece(pieceIndex) do |blockIndex|
+        if bool
+          @completeBlocks.set blockIndex
+        else
+          @completeBlocks.clear blockIndex
+        end
+      end
+    end
+
+    def pieceCompleted?(pieceIndex)
+      complete = true
+      eachBlockInPiece(pieceIndex) do |blockIndex|
+        if ! @completeBlocks.set?(blockIndex)
+          complete = false
+          break
+        end
+      end 
+
+      complete
+    end
+
+    def completePieceBitfield
+      result = Bitfield.new(@numPieces)
+      result.clearAll
+      @numPieces.times do |pieceIndex|
+        if pieceCompleted?(pieceIndex)
+          result.set(pieceIndex)
+        end
+      end 
+      result
+    end
+
+    # Number of bytes we have downloaded and verified.
+    def completedLength
+      num = @completeBlocks.countSet
+      # Last block may be smaller
+      extra = 0
+      if @completeBlocks.set?(@completeBlocks.length-1)
+        num -= 1
+        extra = @lastBlockLength
+      end
+      num*@blockSize + extra
+    end
+
+    def createBlockinfoByPieceResponse(pieceIndex, offset, length)
+      blockIndex = pieceIndex*@blocksPerPiece + offset/@blockSize
+      raise "offset in piece is not divisible by block size" if offset % @blockSize != 0
+      BlockInfo.new(pieceIndex, offset, length, [], blockIndex)
+    end
+
+    def createBlockinfoByBlockIndex(blockIndex)
+      pieceIndex = blockIndex / @blockSize
+      offset = (blockIndex % @blocksPerPiece)*@blockSize
+      length = @blockSize
+      raise "offset in piece is not divisible by block size" if offset % @blockSize != 0
+      BlockInfo.new(pieceIndex, offset, length, [], blockIndex)
+    end
+
+    def createBlockinfoByPieceAndBlockIndex(pieceIndex, peersWithPiece, blockIndex)
+      # If this is the very last block, then it might be smaller than the rest.
+      blockSize = @blockSize
+      blockSize = @lastBlockLength if blockIndex == @numBlocks-1
+      offsetWithinPiece = (blockIndex % @blocksPerPiece)*@blockSize
+      BlockInfo.new(pieceIndex, offsetWithinPiece, blockSize, peersWithPiece, blockIndex)
+    end
+
+    private
+    # Yield to a block each block index in a piece.
+    def eachBlockInPiece(pieceIndex)
+      (pieceIndex*@blocksPerPiece).upto(pieceIndex*@blocksPerPiece+@blocksPerPiece-1) do |blockIndex|
+        break if blockIndex >= @numBlocks
+        yield blockIndex
+      end
+    end
+
+    def blockIndexFromPieceAndOffset(pieceIndex, blockOffset)
+      pieceIndex*@blocksPerPiece + blockOffset/@blockSize
+    end
+
+    # Return an array indexed by piece index where each element
+    # is a list of peers with that piece.
+    def computePeersHavingPiece(classifiedPeers)
+      # Make a list of each peer having the specified piece
       peersHavingPiece = Array.new(@numPieces)
-      # 1. Make a list of the rarity of pieces.
-      rarity = Array.new(@numPieces,0)
       # This first list represents rarity by number if peers having that piece. 1 = rarest.
       classifiedPeers.requestablePeers.each do |peer|
         @numPieces.times do |i|
           if peer.bitfield.set?(i)
-            rarity[i] += 1
             if peersHavingPiece[i]
               peersHavingPiece[i].push peer
             else
               peersHavingPiece[i] = [peer]
             end
           end
+        end
+      end
+      peersHavingPiece
+    end
+    
+    # Compute an array representing the relative rarity of each piece of the torrent.
+    # The returned array has one entry for each piece of the torrent. Each entry is a two-element
+    # array where the first element is the rarity of the piece where lower is more rare (i.e. 0 is rarest 
+    # and represents 0 peers with that piece), and the second element in the entry is the piece index.
+    # The returned array is sorted in order of ascending rarity value (rarest is first), but within each
+    # class of the same rarity value the piece indices are randomized. For example, rarity 1 elements are
+    # all before rarity 2 elements, but the piece indices with rarity 1 are in a random order.
+    def computeRarity(classifiedPeers)
+      # 1. Make a list of the rarity of pieces.
+      rarity = Array.new(@numPieces,0)
+      # This first list represents rarity by number if peers having that piece. 1 = rarest.
+      classifiedPeers.requestablePeers.each do |peer|
+        @numPieces.times do |i|
+          rarity[i] += 1 if peer.bitfield.set?(i)
         end
       end
 
@@ -130,178 +307,11 @@ module QuartzTorrent
         end
       end
       arrayShuffleRange!(rarityOrder, left, @numPieces-left) if left < @numPieces
-  
-      # 3. Make a bitfield containing the pieces we want and haven't requested yet.
-      requestable = @completeBlocks.union(@requestedBlocks).compliment!
+      
+      rarityOrder
+    end  
 
-      # 4. Rarest pieces first, find blocks that are available for download.
-
-      # 4. Decide which blocks to download.
-      #    - If we already have a piece, then in order of rarest pieces first, find blocks that are available for download.
-      #    - If we don't have a piece, our goal is to complete a piece so that we are valuable to the swarm. If we aren't
-      #      working on one, or the one we were working on is no longer available, pick the rarest piece and work on that.
-      result = []
-
-      haveSomePieces = false
-      @numPieces.times do |pieceIndex|
-        if pieceCompleted?(pieceIndex) 
-          haveSomePieces = true
-          break
-        end
-      end
-        
-      if haveSomePieces
-        # We already have a piece
-        rarityOrder.each do |pair|
-          pieceIndex = pair[1]
-          peersWithPiece = peersHavingPiece[pieceIndex]
-          if peersWithPiece && peersWithPiece.size > 0
-            eachBlockInPiece(pieceIndex) do |blockIndex|
-              if requestable.set?(blockIndex) 
-                result.push createBlockinfoByBlockIndex(pieceIndex, peersWithPiece, blockIndex)
-                break if numToReturn && result.size >= numToReturn
-              end
-            end
-          end
-          break if numToReturn && result.size >= numToReturn
-        end
-      else
-        # We don't have a piece
-        chooseNewPiece = true
-        if @firstPieceToDownload
-          peersWithPiece = peersHavingPiece[@firstPieceToDownload]
-          chooseNewPiece = false if peersWithPiece && peersWithPiece.size > 0
-        end
-
-        if chooseNewPiece
-          @firstPieceToDownload = nil
-          rarityOrder.each do |pair|
-            pieceIndex = pair[1]
-            peersWithPiece = peersHavingPiece[pieceIndex]
-            if peersWithPiece && peersWithPiece.size > 0
-              @firstPieceToDownload = pieceIndex
-              @logger.info "Will download first piece #{@firstPieceToDownload}"
-              break
-            end
-          end
-        end
-
-        if @firstPieceToDownload
-          peersWithPiece = peersHavingPiece[@firstPieceToDownload]
-          eachBlockInPiece(@firstPieceToDownload) do |blockIndex|
-            if requestable.set?(blockIndex)
-              result.push createBlockinfoByBlockIndex(@firstPieceToDownload, peersWithPiece, blockIndex)
-              break if numToReturn && result.size >= numToReturn
-            end
-          end
-        end
-      end
-
-      result
-    end   
   end
-
-  def setBlockRequested(blockInfo, bool)
-    if bool
-      @requestedBlocks.set blockInfo.blockIndex
-    else
-      @requestedBlocks.clear blockInfo.blockIndex
-    end
-  end
-
-  # If this block completes the piece and a block is passed, the pieceIndex is yielded to the block.
-  def setBlockCompleted(pieceIndex, blockOffset, bool, clearRequested = :clear_requested)
-    bi = blockIndexFromPieceAndOffset(pieceIndex, blockOffset)
-    @requestedBlocks.clear bi if clearRequested == :clear_requested
-    if bool
-      @completeBlocks.set bi
-      yield pieceIndex if pieceCompleted?(pieceIndex) && block_given?
-    else
-      @completeBlocks.clear bi
-    end
-  end
-
-  def setPieceCompleted(pieceIndex, bool)
-    eachBlockInPiece(pieceIndex) do |blockIndex|
-      if bool
-        @completeBlocks.set blockIndex
-      else
-        @completeBlocks.clear blockIndex
-      end
-    end
-  end
-
-  def pieceCompleted?(pieceIndex)
-    complete = true
-    eachBlockInPiece(pieceIndex) do |blockIndex|
-      if ! @completeBlocks.set?(blockIndex)
-        complete = false
-        break
-      end
-    end 
-
-    complete
-  end
-
-  def completePieceBitfield
-    result = Bitfield.new(@numPieces)
-    result.clearAll
-    @numPieces.times do |pieceIndex|
-      if pieceCompleted?(pieceIndex)
-        result.set(pieceIndex)
-      end
-    end 
-    result
-  end
-
-  # Number of bytes we have downloaded and verified.
-  def completedLength
-    num = @completeBlocks.countSet
-    # Last block may be smaller
-    extra = 0
-    if @completeBlocks.set?(@completeBlocks.length-1)
-      num -= 1
-      extra = @lastBlockLength
-    end
-    num*@blockSize + extra
-  end
-
-  def createBlockinfoByPieceResponse(pieceIndex, offset, length)
-    blockIndex = pieceIndex*@blocksPerPiece + offset/@blockSize
-    raise "offset in piece is not divisible by block size" if offset % @blockSize != 0
-    BlockInfo.new(pieceIndex, offset, length, [], blockIndex)
-  end
-
-  def createBlockinfoByBlockIndex(blockIndex)
-    pieceIndex = blockIndex / @blockSize
-    offset = (blockIndex % @blocksPerPiece)*@blockSize
-    length = @blockSize
-    raise "offset in piece is not divisible by block size" if offset % @blockSize != 0
-    BlockInfo.new(pieceIndex, offset, length, [], blockIndex)
-  end
-
-  def createBlockinfoByBlockIndex(pieceIndex, peersWithPiece, blockIndex)
-    # If this is the very last block, then it might be smaller than the rest.
-    blockSize = @blockSize
-    blockSize = @lastBlockLength if blockIndex == @numBlocks-1
-    offsetWithinPiece = (blockIndex % @blocksPerPiece)*@blockSize
-    BlockInfo.new(pieceIndex, offsetWithinPiece, blockSize, peersWithPiece, blockIndex)
-  end
-
-  private
-  # Yield to a block each block index in a piece.
-  def eachBlockInPiece(pieceIndex)
-    (pieceIndex*@blocksPerPiece).upto(pieceIndex*@blocksPerPiece+@blocksPerPiece-1) do |blockIndex|
-      break if blockIndex >= @numBlocks
-      yield blockIndex
-    end
-  end
-
-  def blockIndexFromPieceAndOffset(pieceIndex, blockOffset)
-    pieceIndex*@blocksPerPiece + blockOffset/@blockSize
-  end
-
-
   
 end
 

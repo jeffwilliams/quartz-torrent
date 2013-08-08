@@ -1,4 +1,5 @@
 #!/usr/bin/env ruby 
+$: << "."
 require 'rubygems'
 require 'minitest/unit'
 require 'minitest/autorun'
@@ -26,6 +27,8 @@ end
 
 class TestBlockstate < MiniTest::Unit::TestCase
   def setup
+    LogManager.logFile = "stdout"
+    LogManager.setLevel "blockstate", :debug
   end
 
   def testFindRequestable

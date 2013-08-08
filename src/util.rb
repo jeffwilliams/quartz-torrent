@@ -30,5 +30,12 @@ module QuartzTorrent
     end
     true
   end
+
+  def logBacktraces
+    logger = LogManager.getLogger("util")
+    Thread.list.each do |thread|
+      logger.error "Thread #{thread.object_id}: #{thread.status}\n" + thread.backtrace.join("\n")
+    end
+  end
 end
 

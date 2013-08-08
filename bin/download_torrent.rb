@@ -29,9 +29,10 @@ LogManager.setLevel "http_tracker_client", :debug
 LogManager.setLevel "peerclient", :debug
 LogManager.setLevel "peerclient.reactor", :info
 #LogManager.setLevel "peerclient.reactor", :debug
-LogManager.setLevel "blockstate", :debug
+LogManager.setLevel "blockstate", :info
 LogManager.setLevel "piecemanager", :info
 LogManager.setLevel "peerholder", :debug
+LogManager.setLevel "util", :debug
 
 FileUtils.mkdir baseDirectory if ! File.exists?(baseDirectory)
 
@@ -54,6 +55,10 @@ puts "Creating signal handler"
 Signal.trap('SIGINT') do
   puts "Got SIGINT. Shutting down."
   running = false
+end
+
+Signal.trap('SIGUSR1') do
+  QuartzTorrent::logBacktraces
 end
 
 puts "Starting peer client"
