@@ -376,6 +376,7 @@ module QuartzTorrent
     def startThread
       @stopped = false
       @thread = Thread.new do
+        initThread("piecemanager")
         while ! @stopped
           @requestsSemaphore.wait
 

@@ -57,6 +57,7 @@ Signal.trap('SIGINT') do
   running = false
 end
 
+initThread("main")
 Signal.trap('SIGUSR1') do
   QuartzTorrent::logBacktraces
 end

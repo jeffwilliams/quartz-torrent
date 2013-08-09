@@ -539,6 +539,7 @@ module QuartzTorrent
           # This could be the eventRead pipe, which we use to signal shutdown or to reloop.
           if io == @eventRead
             @logger.debug "Event received on the eventRead pipe." if @logger
+            @eventRead.read 1
             next
           end
 

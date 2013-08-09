@@ -10,6 +10,9 @@ class Hash
 end
 
 module QuartzTorrent
+  # This is Linux specific: system call number for gettid
+  SYSCALL_GETTID = 224
+
   def bytesToHex(v)
     s = ""
     v.each_byte{ |b|
@@ -33,9 +36,22 @@ module QuartzTorrent
 
   def logBacktraces
     logger = LogManager.getLogger("util")
+
     Thread.list.each do |thread|
-      logger.error "Thread #{thread.object_id}: #{thread.status}\n" + thread.backtrace.join("\n")
+      lwpid = ""
+      if thread[:lwpid]
+        lwpid = " [lwpid #{thread[:lwpid]}]"
+      end
+
+      logger.error "Thread #{thread[:name]} #{thread.object_id}#{lwpid}: #{thread.status}\n" + thread.backtrace.join("\n")
     end
+  end
+
+  # Method to set a few thread-local variables useful in debugging. Threads should call this when started.
+  def initThread(name)
+    Thread.current[:name] = name
+    isLinux = RUBY_PLATFORM.downcase.include?("linux")
+    Thread.current[:lwpid] = syscall(SYSCALL_GETTID) if isLinux
   end
 end
 

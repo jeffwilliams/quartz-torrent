@@ -851,6 +851,7 @@ module QuartzTorrent
 
       @stopped = false
       @worker = Thread.new do
+        initThread("peerclient")
         @toStart.each{ |trackerclient| trackerclient.start }
         @reactor.start 
         @logger.info "Reactor stopped."

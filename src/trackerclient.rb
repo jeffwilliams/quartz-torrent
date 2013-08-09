@@ -4,6 +4,7 @@ require "./src/udptrackermsg"
 require "./src/httptrackerclient"
 require "./src/udptrackerclient"
 require "./src/interruptiblesleep"
+require "./src/util"
 require "net/http"
 require "cgi"
 require "thread"
@@ -165,6 +166,7 @@ module QuartzTorrent
       return if @started
       @started = true
       @worker = Thread.new do
+        initThread("trackerclient")
         @logger.info "Worker thread starting"
         @event = :started
         trackerInterval = nil
