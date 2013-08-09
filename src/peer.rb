@@ -96,6 +96,13 @@ module QuartzTorrent
       end
     end
 
+    def updateDownloadRate(msg)
+      @downloadRate.update msg.length
+      if msg.is_a? Piece
+        @downloadRateDataOnly.update msg.data.length
+      end
+    end
+
     # This method does not clone listeners.
     def clone
       peer = Peer.new(@trackerPeer)

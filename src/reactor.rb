@@ -498,7 +498,7 @@ module QuartzTorrent
       # 1. Check timers
       selectTimeout = nil
       timer = nil
-      while true
+      while true && ! @stopped
         timer = @timerManager.peek
         break if ! timer
         secondsUntilExpiry = timer.secondsUntilExpiry
@@ -511,7 +511,7 @@ module QuartzTorrent
       end
 
       # 2. Check user events
-      @userEvents.each{ |event| @handler.userEvent event }
+      @userEvents.each{ |event| @handler.userEvent event } if ! @stopped
 
       # 3. Call Select. Ignore exception set: apparently this is for OOB data, or terminal things.  
       selectResult = nil

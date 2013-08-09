@@ -107,6 +107,7 @@ module QuartzTorrent
       @managePeersPeriod = 10 # Defined in bittorrent spec. Only unchoke peers every 10 seconds.
       @requestBlocksPeriod = 1
       @handshakeTimeout = 1
+      @requestTimeout = 60
     end
 
     attr_reader :torrentData
@@ -217,6 +218,10 @@ module QuartzTorrent
       @logger.info "Peer #{peer} connected to us. "
 
       peer.state = :established
+      peer.amChoked = true
+      peer.peerChoked = true
+      peer.amInterested = false
+      peer.peerInterested = false
       peer.bitfield = Bitfield.new(torrentData.metainfo.info.pieces.length)
 
       # Send bitfield
@@ -290,6 +295,10 @@ module QuartzTorrent
         # This is a remote peer that we connected to returning our handshake.
         processHandshake(msg, peer)
         peer.state = :established
+        peer.amChoked = true
+        peer.peerChoked = true
+        peer.amInterested = false
+        peer.peerInterested = false
       elsif msg.is_a? BitfieldMessage
         @logger.warn "Received bitfield message from peer."
         handleBitfield(msg, peer)
@@ -549,12 +558,28 @@ module QuartzTorrent
         return
       end
 
+      # Delete any timed-out requests.
+      classifiedPeers.establishedPeers.each do |peer|
+        toDelete = []
+        peer.requestedBlocks.each do |blockIndex, requestTime|
+          toDelete.push blockIndex if (Time.new - requestTime) > @requestTimeout
+        end
+        toDelete.each do |blockIndex|
+          @logger.info "Block #{blockIndex} request timed out."
+          blockInfo = torrentData.blockState.createBlockinfoByBlockIndex(blockIndex)
+          torrentData.blockState.setBlockRequested blockInfo, false
+          peer.requestedBlocks.delete blockIndex
+        end
+      end
+
+      # Request blocks
       blockInfos = torrentData.blockState.findRequestableBlocks(classifiedPeers, 100)
       blockInfos.each do |blockInfo|
         #peer = blockInfo.peers.first
         # Pick one of the peers that has the piece to download it from. Pick one of the
         # peers with the top 3 upload rates.
-        peer = blockInfo.peers.sort{ |a,b| b.uploadRate.value <=> a.uploadRate.value}.first(3).shuffle.first
+        random = blockInfo.peers[rand(blockInfo.peers.size)]
+        peer = blockInfo.peers.sort{ |a,b| b.uploadRate.value <=> a.uploadRate.value}.first(3).push(random).shuffle.first
         withPeersIo(peer, "requesting block") do |io|
           if ! peer.amInterested
             # Let this peer know that I'm interested if I haven't yet.
@@ -566,7 +591,7 @@ module QuartzTorrent
           msg = blockInfo.getRequest
           msg.serializeTo io
           torrentData.blockState.setBlockRequested blockInfo, true
-          peer.requestedBlocks[blockInfo.blockIndex] = true
+          peer.requestedBlocks[blockInfo.blockIndex] = Time.new
         end
       end
     end
@@ -589,6 +614,10 @@ module QuartzTorrent
       end
 
       blockInfo = torrentData.blockState.createBlockinfoByPieceResponse(msg.pieceIndex, msg.blockOffset, msg.data.length)
+      if torrentData.blockState.blockCompleted?(blockInfo)
+        @logger.info "Receive piece: we already have this block. Ignoring this message."
+        return
+      end
       peer.requestedBlocks.delete blockInfo.blockIndex
       # Block is marked as not requested when hash is confirmed
 
@@ -624,13 +653,13 @@ module QuartzTorrent
         return
       end
 
+      peer.bitfield = Bitfield.new(torrentData.metainfo.info.pieces.length)
+      peer.bitfield.copyFrom(msg.bitfield)
+
       if ! torrentData.blockState
         @logger.error "Bitfield: no blockstate yet."
         return
       end
-
-      peer.bitfield = Bitfield.new(torrentData.metainfo.info.pieces.length)
-      peer.bitfield.copyFrom(msg.bitfield)
 
       # If we are interested in something from this peer, let them know.
       needed = torrentData.blockState.completePieceBitfield.compliment
@@ -652,18 +681,18 @@ module QuartzTorrent
         return
       end
 
-      if ! torrentData.blockState
-        @logger.error "Have: no blockstate yet."
-        return
-      end
-      
-      if msg.pieceIndex >= torrentData.blockState.completePieceBitfield.length
+      if msg.pieceIndex >= torrentData.metainfo.info.pieces.length
         @logger.warn "Peer #{peer} sent Have message with invalid piece index"
         return
       end
 
       # Update peer's bitfield
       peer.bitfield.set msg.pieceIndex
+
+      if ! torrentData.blockState
+        @logger.error "Have: no blockstate yet."
+        return
+      end
 
       # If we are interested in something from this peer, let them know.
       if ! torrentData.blockState.completePieceBitfield.set?(msg.pieceIndex)

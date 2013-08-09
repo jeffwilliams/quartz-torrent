@@ -170,6 +170,10 @@ module QuartzTorrent
       end
     end
 
+    def blockCompleted?(blockInfo)
+      @completeBlocks.set? blockInfo.blockIndex
+    end
+
     def setPieceCompleted(pieceIndex, bool)
       eachBlockInPiece(pieceIndex) do |blockIndex|
         if bool

@@ -7,20 +7,10 @@ ruby1.9.1 tests/test_filemanager.rb
 Bencoding: ruby gem bencode
 
 
-Ideas:
-
-Use the reactor for the network sockets. Apparently using non-blocking IO for files is useless: http://www.remlab.net/op/nonblock.shtml
-Files are always readable and writable. However the task is paused when reading or writing to a file that needs to be swapped in. So it
-might be worthwhile to do reading and writing in a different thread.
-
-The file io thread would have a queue for requests, and would write responses into a queue as events. The reactor would pick up the events
-which are 'block ready' or 'write complete' (Why write complete?). In the coroutine, the handler would match the event to the io that 
-cared about it and deal with this event.
-
 TODO
-  - Shutdown never completes
+  - Shutdown takes a long time
+  - Implement endgame strategy
   - Update peer download rate when they download msgs
-  - On startup we should focus on completing at least one piece instead of trying to download a lot of different pieces.
   - Currently when we request blocks we request a fixed amount from the first peer returned from the findRequestableBlocks
     call. We should spread the requests out to other peers as well if we have saturated the first peer's connection.
     We could tell by the peer's upload rate: upload_rate/(block_size/request_blocks_period) is the ratio of peer's measured
@@ -32,10 +22,8 @@ TODO
       upload_rate/(block_size/request_blocks_period)
 
   - Limit peers to the target peer count
-  - Need to timeout when reading messages. For example, when receiving an incoming handshake
-    if it's the tracker testing us then we don't get a peerid. In this case we will block forever 
-    trying to read it.
   - Currently we accept connections from peers even when we are checking the piece hash. Is this a problem?
+    - No. Modified code to allow bitmap and have messages to proceed from peers, so we should have a complete picture.
     
  
 
