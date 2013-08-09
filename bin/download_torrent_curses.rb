@@ -5,6 +5,9 @@ require 'getoptlong'
 require "ncurses"
 require 'src/peerclient'
 require 'src/formatter'
+require 'src/memprofiler'
+
+
 
 DebugTty = "/dev/pts/8"
 
@@ -279,13 +282,13 @@ class DetailsScreen < Screen
   def showPeer(peer)
 
     flags = ""
-    flags << (peer.peerChoked ? "choked" : "!choked" )
+    flags << (peer.peerChoked ? "chked" : "!chked" )
     flags << ","
-    flags << (peer.amChoked ? "choking" : "!choking" )
+    flags << (peer.amChoked ? "chking" : "!chking" )
     flags << ","
-    flags << (peer.peerInterested ? "interested" : "!interested" )
+    flags << (peer.peerInterested ? "intsted" : "!intsted" )
     flags << ","
-    flags << (peer.amInterested ? "interesting" : "!interesting" )
+    flags << (peer.amInterested ? "intsting" : "!intsting" )
 
     id = peer.trackerPeer.id
     if id
@@ -303,18 +306,121 @@ class DetailsScreen < Screen
     end
   
     # id, host:port, upload, download, state, flags "
-    str = "  %20s %-21s Rate: %11s|%-11s %-12s %s\n" % 
+    str = "  %20s %-21s Rate: %11s|%-11s %-12s %4d %s\n" % 
       [
         id,
         "#{peer.trackerPeer.ip}:#{peer.trackerPeer.port}",
         Formatter.formatSpeed(peer.uploadRate),
         Formatter.formatSpeed(peer.downloadRate),
         peer.state.to_s,
+        peer.requestedBlocks.length,
         flags       
       ]
     
     waddstrnw @window, str
   end
+end
+
+class DebugScreen < Screen
+  def initialize(window)
+    @window = window
+
+    @profiler = QuartzTorrent::MemProfiler.new
+    @profiler.trackClass QuartzTorrent::Bitfield
+    @profiler.trackClass QuartzTorrent::BlockInfo
+    @profiler.trackClass QuartzTorrent::BlockState
+    @profiler.trackClass QuartzTorrent::ClassifiedPeers
+    @profiler.trackClass QuartzTorrent::RequestedBlock
+    @profiler.trackClass QuartzTorrent::IncompletePiece
+    @profiler.trackClass QuartzTorrent::FileRegion
+    @profiler.trackClass QuartzTorrent::PieceMapper
+    @profiler.trackClass QuartzTorrent::IOManager
+    @profiler.trackClass QuartzTorrent::PieceIO
+    @profiler.trackClass QuartzTorrent::PieceManager
+    @profiler.trackClass QuartzTorrent::PieceManager::Result
+    @profiler.trackClass QuartzTorrent::Formatter
+    @profiler.trackClass QuartzTorrent::TrackerClient
+    @profiler.trackClass QuartzTorrent::HttpTrackerClient
+    @profiler.trackClass QuartzTorrent::InterruptibleSleep
+    @profiler.trackClass QuartzTorrent::LogManager
+    @profiler.trackClass QuartzTorrent::LogManager::NullIO
+    @profiler.trackClass QuartzTorrent::Metainfo
+    @profiler.trackClass QuartzTorrent::Metainfo::FileInfo
+    @profiler.trackClass QuartzTorrent::Metainfo::Info
+    @profiler.trackClass QuartzTorrent::PieceManagerRequestMetadata
+    @profiler.trackClass QuartzTorrent::ReadRequestMetadata
+    @profiler.trackClass QuartzTorrent::TorrentData
+    @profiler.trackClass QuartzTorrent::TorrentDataDelegate
+    @profiler.trackClass QuartzTorrent::PeerClientHandler
+    @profiler.trackClass QuartzTorrent::PeerClient
+    @profiler.trackClass QuartzTorrent::PeerHolder
+    @profiler.trackClass QuartzTorrent::ManagePeersResult
+    @profiler.trackClass QuartzTorrent::PeerManager
+    @profiler.trackClass QuartzTorrent::PeerRequest
+    @profiler.trackClass QuartzTorrent::PeerHandshake
+    @profiler.trackClass QuartzTorrent::PeerWireMessage
+    @profiler.trackClass QuartzTorrent::KeepAlive
+    @profiler.trackClass QuartzTorrent::Choke
+    @profiler.trackClass QuartzTorrent::Unchoke
+    @profiler.trackClass QuartzTorrent::Interested
+    @profiler.trackClass QuartzTorrent::Uninterested
+    @profiler.trackClass QuartzTorrent::Have
+    @profiler.trackClass QuartzTorrent::BitfieldMessage
+    @profiler.trackClass QuartzTorrent::Request
+    @profiler.trackClass QuartzTorrent::Piece
+    @profiler.trackClass QuartzTorrent::Cancel
+    @profiler.trackClass QuartzTorrent::Peer
+    @profiler.trackClass QuartzTorrent::Rate
+    @profiler.trackClass QuartzTorrent::Rate::Sample
+    @profiler.trackClass QuartzTorrent::Handler
+    @profiler.trackClass QuartzTorrent::OutputBuffer
+    @profiler.trackClass QuartzTorrent::IoFacade
+    @profiler.trackClass QuartzTorrent::WriteOnlyIoFacade
+    @profiler.trackClass QuartzTorrent::IOInfo
+    @profiler.trackClass QuartzTorrent::TimerManager
+    @profiler.trackClass QuartzTorrent::TimerManager::TimerInfo
+    @profiler.trackClass QuartzTorrent::Reactor
+    @profiler.trackClass QuartzTorrent::Reactor::InternalTimerInfo
+    @profiler.trackClass QuartzTorrent::RegionMap
+    @profiler.trackClass QuartzTorrent::TrackerPeer
+    @profiler.trackClass QuartzTorrent::TrackerDynamicRequestParams
+    @profiler.trackClass QuartzTorrent::TrackerResponse
+    @profiler.trackClass QuartzTorrent::TrackerClient
+    @profiler.trackClass QuartzTorrent::UdpTrackerClient
+    @profiler.trackClass QuartzTorrent::UdpTrackerMessage
+    @profiler.trackClass QuartzTorrent::UdpTrackerRequest
+    @profiler.trackClass QuartzTorrent::UdpTrackerResponse
+    @profiler.trackClass QuartzTorrent::UdpTrackerConnectRequest
+    @profiler.trackClass QuartzTorrent::UdpTrackerConnectResponse
+    @profiler.trackClass QuartzTorrent::UdpTrackerAnnounceRequest
+    @profiler.trackClass QuartzTorrent::UdpTrackerAnnounceResponse
+
+    @lastRefreshTime = nil
+    @profilerInfo = nil
+  
+  end
+
+  def draw
+    Ncurses::werase @window
+    Ncurses::wmove(@window, 0,0)
+
+    ColorScheme.apply(ColorScheme::HeadingColorPair)
+    Ncurses.attron(Ncurses::A_BOLD)
+    waddstrnw @window, "=== QuartzTorrent Downloader  [#{Time.new}] ===\n\n"
+    Ncurses.attroff(Ncurses::A_BOLD) 
+    ColorScheme.apply(ColorScheme::NormalColorPair)
+
+    if @lastRefreshTime.nil? || (Time.new - @lastRefreshTime > 4)
+      @profilerInfo = @profiler.getCounts
+      @lastRefreshTime = Time.new
+    end
+
+    waddstrnw @window, "Memory usage (count of instances of each class):\n"
+    @profilerInfo.each do |clazz, count|
+      waddstrnw @window, "#{clazz}: #{count}\n"
+    end
+  end    
+
 end
 
 class LogScreen < Screen
@@ -472,6 +578,7 @@ begin
   scrManager.add :summary, SummaryScreen.new(Ncurses::stdscr)
   scrManager.add :details, DetailsScreen.new(Ncurses::stdscr)
   scrManager.add :log, LogScreen.new(Ncurses::stdscr)
+  scrManager.add :debug, DebugScreen.new(Ncurses::stdscr)
   scrManager.set :summary
 
   #puts "Loading torrent #{torrent}"
@@ -506,6 +613,8 @@ begin
           scrManager.set :log
         elsif key.chr == 's'
           scrManager.set :summary
+        elsif key.chr == 'd'
+          scrManager.set :debug
         elsif key.chr == "\n"
           # Details
           if scrManager.currentId == :summary

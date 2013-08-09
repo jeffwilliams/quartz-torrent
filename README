@@ -18,6 +18,7 @@ which are 'block ready' or 'write complete' (Why write complete?). In the corout
 cared about it and deal with this event.
 
 TODO
+  - Shutdown never completes
   - Update peer download rate when they download msgs
   - On startup we should focus on completing at least one piece instead of trying to download a lot of different pieces.
   - Currently when we request blocks we request a fixed amount from the first peer returned from the findRequestableBlocks

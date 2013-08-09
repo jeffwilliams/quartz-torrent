@@ -341,6 +341,7 @@ module QuartzTorrent
       @logger = logger
       @listenBacklog = 10
       @eventRead, @eventWrite = IO.pipe
+      @currentEventPipeChars = 0
       @currentHandlerCallback = nil
       @userEvents = []
     end
@@ -410,7 +411,9 @@ module QuartzTorrent
 
     def stop
       @stopped = true
+      return if @currentEventPipeChars > 0
       @eventWrite.write 'x'
+      @currentEventPipeChars += 1
       @eventWrite.flush
     end
 
@@ -418,7 +421,10 @@ module QuartzTorrent
       @timerManager.add(duration, metainfo, recurring, immed)
       # This timer may expire sooner than the current sleep we are doing in select(). To make
       # sure we will write to the event pipe to break out of select().
+      return if @currentEventPipeChars > 0
       @eventWrite.write 'x'
+      @currentEventPipeChars += 1
+      @eventWrite.flush
     end  
 
     # Meant to be called from the handler. Adds the specified data to the outgoing queue for the current io
@@ -540,6 +546,7 @@ module QuartzTorrent
           if io == @eventRead
             @logger.debug "Event received on the eventRead pipe." if @logger
             @eventRead.read 1
+            @currentEventPipeChars -= 1
             next
           end
 

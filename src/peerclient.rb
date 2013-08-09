@@ -551,9 +551,9 @@ module QuartzTorrent
 
       blockInfos = torrentData.blockState.findRequestableBlocks(classifiedPeers, 100)
       blockInfos.each do |blockInfo|
+        #peer = blockInfo.peers.first
         # Pick one of the peers that has the piece to download it from. Pick one of the
         # peers with the top 3 upload rates.
-        #peer = blockInfo.peers.first
         peer = blockInfo.peers.sort{ |a,b| b.uploadRate.value <=> a.uploadRate.value}.first(3).shuffle.first
         withPeersIo(peer, "requesting block") do |io|
           if ! peer.amInterested
@@ -684,7 +684,7 @@ module QuartzTorrent
       while true
         result = torrentData.pieceManager.nextResult
         break if ! result
-        metaData = torrentData.pieceManagerRequestMetadata[result.requestId]
+        metaData = torrentData.pieceManagerRequestMetadata.delete(result.requestId)
         if ! metaData
           @logger.error "Can't find metadata for PieceManager request #{result.requestId}"
           return

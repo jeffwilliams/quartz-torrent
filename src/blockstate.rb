@@ -77,6 +77,7 @@ module QuartzTorrent
       @requestedBlocks = Bitfield.new(@numBlocks)
       @requestedBlocks.clearAll
       @currentPieces = []
+      @maxOutstandingRequestsPerPeer = 50
     end
  
     attr_reader :blockSize
@@ -92,6 +93,8 @@ module QuartzTorrent
       # order).
       result = []
 
+      # Update requestable peers to only be those that we can still request pieces from.
+      classifiedPeers.requestablePeers = classifiedPeers.requestablePeers.find_all{ |p| p.requestedBlocks.length < @maxOutstandingRequestsPerPeer }
       peersHavingPiece = computePeersHavingPiece(classifiedPeers)
       requestable = @completeBlocks.union(@requestedBlocks).compliment!
       rarityOrder = nil

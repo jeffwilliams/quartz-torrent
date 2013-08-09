@@ -12,6 +12,7 @@ module QuartzTorrent
     def initialize(window = 30)
       reset
       @window = window
+      @maxSamples = 100
     end
 
     def value
@@ -23,7 +24,7 @@ module QuartzTorrent
     end
 
     def update(sample)
-      @samples.push Sample.new(sample)
+      @samples.push Sample.new(sample) if @samples.size < @maxSamples
     end
 
     def reset
