@@ -216,6 +216,7 @@ module QuartzTorrent
     end
   end
 
+  # An IoFacade that doesn't allow reading.
   class WriteOnlyIoFacade < IoFacade
     def initialize(ioInfo, logger = nil, readError = "Reading is not allowed for this IO")
       super(ioInfo, logger)
@@ -227,6 +228,7 @@ module QuartzTorrent
     end
   end
 
+  # An IO and associated information used by the Reactor.
   class IOInfo
     def initialize(io, metainfo, seekable = false)
       @io = io
@@ -254,6 +256,7 @@ module QuartzTorrent
     end
   end
 
+  # Class used to manage timers.
   class TimerManager
     class TimerInfo
       def initialize(duration, recurring, metainfo)
@@ -281,6 +284,12 @@ module QuartzTorrent
       @mutex = Mutex.new
     end
 
+    # Add a timer. Parameter 'duration' specifies the timer duration in seconds,
+    # 'metainfo' is caller information passed to the handler when the timer expires,
+    # 'recurring' should be true if the timer will repeat, or false if it will only
+    # expire once, and 'immed' when true specifies that the timer should expire immediately 
+    # (and again each duration if recurring) while false specifies that the timer will only
+    # expire the first time after it's duration elapses.
     def add(duration, metainfo = nil, recurring = true, immed = false)
       raise "TimerManager.add: Timer duration may not be nil" if duration.nil?
       info = TimerInfo.new(duration, recurring, metainfo)
@@ -289,6 +298,7 @@ module QuartzTorrent
       info
     end
   
+    # Cancel a timer.
     def cancel(timerInfo)
       timerInfo.cancelled = true
     end
@@ -317,6 +327,18 @@ module QuartzTorrent
     end
   end
 
+  # This class implements the Reactor pattern. The Reactor listens for activity on IO objects and calls methods on 
+  # an associated Handler object when activity is detected. Callers can use listen, connect or open to register IO
+  # objects with the reactor.
+  #
+  # This Reactor is implemented using Fibers in such a way that when activity is defected on an IO, the handler 
+  # can perform reads of N bytes without blocking and without needing to buffer. For example, the handler
+  # may call:
+  #
+  #   msg = io.read(300)
+  #
+  # when it knows it must read 300 bytes. If only 100 are available, the handler is cooperatively preempted and 
+  # later resumed when more bytes are available, so that the read seems atomic while also not blocking.
   class Reactor
     class InternalTimerInfo
       def initialize(type, data)
@@ -409,6 +431,7 @@ module QuartzTorrent
 
     end
 
+    # Stop the event loop.
     def stop
       @stopped = true
       return if @currentEventPipeChars > 0
@@ -417,6 +440,12 @@ module QuartzTorrent
       @eventWrite.flush
     end
 
+    # Schedule a timer. Parameter 'duration' specifies the timer duration in seconds,
+    # 'metainfo' is caller information passed to the handler when the timer expires,
+    # 'recurring' should be true if the timer will repeat, or false if it will only
+    # expire once, and 'immed' when true specifies that the timer should expire immediately 
+    # (and again each duration if recurring) while false specifies that the timer will only
+    # expire the first time after it's duration elapses.
     def scheduleTimer(duration, metainfo = nil, recurring = true, immed = false)
       @timerManager.add(duration, metainfo, recurring, immed)
       # This timer may expire sooner than the current sleep we are doing in select(). To make
@@ -437,6 +466,7 @@ module QuartzTorrent
       end
     end
 
+    # Meant to be called from the handler. Read 'len' bytes from the current IO.
     def read(len)
       if @currentIoInfo
         # This is meant to be called from inside a fiber. Should add a check to confirm that here.

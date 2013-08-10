@@ -1,5 +1,5 @@
 module QuartzTorrent
-  # Torrent peers classified by connection state. 
+  # This class is used to classift torrent peers by connection state. 
   class ClassifiedPeers
     # Pass a list of Peer objects for a specific torrent
     def initialize(peers)
@@ -77,6 +77,7 @@ module QuartzTorrent
     # Peers that we have an established connection to, and are interested
     attr_accessor :interestedPeers
 
+    # Peers that we have an established connection to, and are not interested
     attr_accessor :uninterestedPeers
       
     # Peers that we have an established connection to, that are not choking us, that we are interested in

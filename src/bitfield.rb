@@ -11,11 +11,16 @@ module QuartzTorrent
       end
     end
 
+    # Length of the Bitfield in bits.
     attr_reader :length
+
+    
+    # Length of the Bitfield in bytes.
     def byteLength
       @data.length
     end
 
+    # Set the bit at index 'bit' to 1.
     def set(bit)
       quotient = bit >> 3
       remainder = bit & 0x7
@@ -25,6 +30,7 @@ module QuartzTorrent
       @data[quotient] |= mask
     end  
 
+    # Clear the bit at index 'bit' to 0.
     def clear(bit)
       quotient = bit >> 3
       remainder = bit & 0x7
@@ -74,10 +80,12 @@ module QuartzTorrent
       true
     end
 
+    # Set all bits in the field to 1.
     def setAll
       @data.fill(0xff)
     end
 
+    # Clear all bits in the field to 0.
     def clearAll
       @data.fill(0x00)
     end
@@ -106,6 +114,7 @@ module QuartzTorrent
       newbitfield.intersection!(bitfield)
     end
 
+    # Update this bitfield to be the intersection of this bitfield and the passed bitfield.
     def intersection!(bitfield)
       raise "That's not a bitfield" if ! bitfield.is_a?(Bitfield)
       raise "bitfield lengths must be equal" if ! bitfield.length == length
@@ -116,6 +125,8 @@ module QuartzTorrent
       self
     end
 
+    # Set the contents of this bitfield to be the same as the passed bitfield. An exception is 
+    # thrown if the passed bitfield is smaller than this.
     def copyFrom(bitfield)
       raise "Source bitfield is too small (#{bitfield.length} < #{length})" if bitfield.length < length
       (@data.length).times do |i|
@@ -123,25 +134,31 @@ module QuartzTorrent
       end
     end
 
+    # Calculate the compliment of this bitfield, and 
+    # return the result as a new bitfield. 
     def compliment
       bitfield = Bitfield.new(length)
       bitfield.copyFrom(self)
       bitfield.compliment!
     end
 
+    # Update this bitfield to be the compliment of itself.
     def compliment!
       @data.collect!{ |e| ~e }
       self
     end
 
+    # Serialize this bitfield as a string.
     def serialize
       @data.pack "C*"
     end
 
+    # Unserialize this bitfield from a string.
     def unserialize(s)
       @data = s.unpack "C*"
     end
 
+    # Return a display string representing the bitfield.
     def to_s(groupsOf = 8)
       groupsOf = 8 if groupsOf == 0
       s = ""

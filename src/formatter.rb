@@ -6,6 +6,7 @@ module QuartzTorrent
     Meg = 1024*Kb
     Gig = 1024*Meg
 
+    # Format a size in bytes.
     def self.formatSize(size)
       s = size.to_f
       if s > Gig
@@ -20,15 +21,18 @@ module QuartzTorrent
       s
     end
 
+    # Format a floating point number as a percentage with one decimal place.
     def self.formatPercent(frac)
       s = "%.1f" % (frac.to_f*100)
       s + "%"
     end
     
+    # Format a speed in bytes per second.
     def self.formatSpeed(s)
       Formatter.formatSize(s) + "/s"
     end
 
+    # Format a duration of time in seconds.
     def self.formatTime(secs)
       s = ""
       time = secs.to_i

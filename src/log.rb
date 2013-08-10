@@ -2,8 +2,10 @@ require 'rubygems'
 require 'logger'
 
 module QuartzTorrent
+  # Class used to control logging.
   class LogManager
 
+    # A fake IO object whose write and close methods do nothing.
     class NullIO
       def write(msg)
       end
@@ -16,6 +18,10 @@ module QuartzTorrent
     @@levels = {}
     @@defaultLevel = Logger::ERROR
 
+    # Initialize logging information from the environment. The environment variable
+    # QUARTZ_TORRENT_LOGFILE specifies which file logging is written to, and can also take the 
+    # values 'stdout' or 'stderr'. The environment variable QUARTZ_TORRENT_LOGLEVEL specifies the
+    # default logging level for all loggers.
     def self.initializeFromEnv
       dest = ENV['QUARTZ_TORRENT_LOGFILE']
       level = ENV['QUARTZ_TORRENT_LOGLEVEL']
@@ -25,6 +31,7 @@ module QuartzTorrent
 
     end
 
+    # Set the logfile.
     # This method doesn't change the log file if loggers have already
     # been created by getLogger
     def self.logFile=(dest)

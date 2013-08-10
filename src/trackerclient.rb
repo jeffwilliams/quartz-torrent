@@ -56,7 +56,7 @@ module QuartzTorrent
       @uploaded = 0
       @downloaded = 0
       if metainfo
-        @left = metainfo.info.totalLength.to_i
+        @left = metainfo.info.dataLength.to_i
       else
         @left = 0
       end

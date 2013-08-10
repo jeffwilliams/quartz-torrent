@@ -8,6 +8,7 @@ module QuartzTorrent
   # generally follows the structure of the metadata format.
   class Metainfo
 
+    # If 'v' is null, throw an exception. Otherwise return 'v'.
     def self.valueOrException(v, msg)
       if ! v
         LogManager.getLogger("metainfo").error msg
@@ -29,6 +30,7 @@ module QuartzTorrent
       # Length of the file.
       attr_accessor :length
   
+      # Create a FileInfo object from a bdecoded structure.
       def self.createFromBdecode(bdecode)
         result = FileInfo.new
         result.length = Metainfo.valueOrException(bdecode['length'], "Torrent metainfo listed multiple files, and one is missing the length property.")
@@ -62,19 +64,19 @@ module QuartzTorrent
       attr_accessor :files
       # Suggested file or directory name
       attr_accessor :name
+      # Length of each piece in bytes. The last piece may be shorter than this.
       attr_accessor :pieceLen
-      # Array of SHA1 digests of all peices. These digests are in binary format. They can be compared using (for example):
-      # 
-      # require 'digest/sha1'
-      # Digest::SHA1.digest('foo')
-      #
+      # Array of SHA1 digests of all peices. These digests are in binary format. 
       attr_accessor :pieces
+      # True if no external peer source is allowed.
       attr_accessor :private
 
+      # Total length of the torrent data in bytes.
       def dataLength
         files.reduce(0){ |memo,f| memo + f.length}
       end
 
+      # Create a FileInfo object from a bdecoded structure.
       def self.createFromBdecode(bdecode)
         infoDict = bdecode['info']
         result = Info.new
@@ -98,11 +100,8 @@ module QuartzTorrent
         result
       end
 
-      def totalLength
-        @files.reduce(0){ |memo, file| memo + file.length }
-      end
-
       private
+      # Parse the pieces of the torrent out of the metainfo.
       def self.parsePieces(p)
         # Break into 20-byte portions.
         if p.length % 20 != 0
@@ -143,11 +142,14 @@ module QuartzTorrent
 
     # Creation date as a ruby Time object
     attr_accessor :creationDate
+    # Comment
     attr_accessor :comment
+    # Created By
     attr_accessor :createdBy
+    # The string encoding format used to generate the pieces part of the info dictionary in the .torrent metafile
     attr_accessor :encoding
 
-
+    # Create a Metainfo object from the passed bencoded string.
     def self.createFromString(data)
       logger = LogManager.getLogger("metainfo")
 
@@ -178,10 +180,12 @@ module QuartzTorrent
       result
     end
 
+    # Create a Metainfo object from the passed IO.
     def self.createFromIO(io)
       self.createFromString(io.read)
     end
 
+    # Create a Metainfo object from the named file.
     def self.createFromFile(path)
       result = 
       File.open(path,"r") do |io|

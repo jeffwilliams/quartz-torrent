@@ -1,9 +1,11 @@
 require './src/bitfield.rb'
 module QuartzTorrent
 
+  # Represents a bittorrent peer protocol generic request message (not the specific piece request message).
   class PeerRequest
   end
 
+  # Represents a bittorrent peer protocol handshake message.
   class PeerHandshake
     ProtocolName = "BitTorrent protocol"
     InfoHashLen = 20
@@ -53,8 +55,11 @@ module QuartzTorrent
       result
     end
 
+    # Unserialize the first part of a PeerHandshake message from the passed io object
+    # up to but not including the peer id. This is needed when handling a handshake from
+    # the tracker which doesn't have a peer id.
     def self.unserializeExceptPeerIdFrom(io)
-            result = PeerHandshake.new
+      result = PeerHandshake.new
       len = io.read(1).unpack("C")[0]
       proto = io.read(len)
       raise "Unrecognized peer protocol name '#{proto}'" if proto != ProtocolName
@@ -64,6 +69,7 @@ module QuartzTorrent
     end
   end
 
+  # Represents a bittorrent peer protocol wire message (a non-handshake message).
   # All messages other than handshake have a 4-byte length, 1-byte message id, and payload.
   class PeerWireMessage
     MessageKeepAlive = -1

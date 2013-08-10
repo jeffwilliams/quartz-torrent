@@ -144,6 +144,7 @@ module QuartzTorrent
     end
 
     private
+    # Choose a peer that we will optimistically unchoke.
     def selectOptimisticPeer(classifiedPeers)
       # "at any one time there is a single peer which is unchoked regardless of its upload rate (if interested, it counts as one of the four allowed downloaders). Which peer is optimistically 
       # unchoked rotates every 30 seconds. Newly connected peers are three times as likely to start as the current optimistic unchoke as anywhere else in the rotation. This gives them a decent chance 

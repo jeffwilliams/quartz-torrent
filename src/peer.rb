@@ -102,6 +102,7 @@ module QuartzTorrent
       end
     end
 
+    # Update the download rate of the peer from the passed PeerWireMessage.
     def updateDownloadRate(msg)
       @downloadRate.update msg.length
       if msg.is_a? Piece
@@ -109,7 +110,7 @@ module QuartzTorrent
       end
     end
 
-    # This method does not clone listeners.
+    # Create a clone of this peer. This method does not clone listeners.
     def clone
       peer = Peer.new(@trackerPeer)
       peer.amChoked = amChoked

@@ -21,8 +21,11 @@ To-Do
 
     Alternately, a simpler approach could be to begin by queueing 100 requests, and scaling up or back based on the amount
     remaining next iteration.
+  - Allow pausing/unpausing torrents
   - Package library as a gem
   - Implement rate limiting
+  - Documentation
+  - Help screen in curses downloader
 
 Requirements
 ------------

@@ -16,6 +16,7 @@ include QuartzTorrent
 
 module QuartzTorrent
  
+  # Metadata associated with outstanding requests to the PieceManager (asynchronous IO management).
   class PieceManagerRequestMetadata
     def initialize(type, data)
       @type = type
@@ -25,6 +26,7 @@ module QuartzTorrent
     attr_accessor :data
   end
  
+  # Extra metadata stored in a PieceManagerRequestMetadata specific to read requests.
   class ReadRequestMetadata
     def initialize(peer, requestMsg)
       @peer = peer
@@ -34,6 +36,8 @@ module QuartzTorrent
     attr_accessor :requestMsg
   end
 
+  # Class used by PeerClientHandler to keep track of information associated with a single torrent
+  # being downloaded/uploaded.
   class TorrentData
     def initialize(metainfo, trackerClient)
       @metainfo = metainfo
@@ -95,7 +99,7 @@ module QuartzTorrent
     end
   end
 
-  # Implements a Reactor handler
+  # This class implements a Reactor Handler object. This Handler implements the PeerClient.
   class PeerClientHandler < QuartzTorrent::Handler
     def initialize(baseDirectory)
       # Hash of TorrentData objects, keyed by torrent infoHash
@@ -885,10 +889,11 @@ module QuartzTorrent
     end
   end
 
-  # Represents a client that talks to bittorrent peers
-  # This class implements a Reactor Handler.
+  # Represents a client that talks to bittorrent peers. This is the main class used to download and upload
+  # bittorrents.
   class PeerClient 
 
+    # Create a new PeerClient that will store torrents udner the specified baseDirectory.
     def initialize(baseDirectory)
       @port = 9998
       @handler = nil
@@ -903,8 +908,9 @@ module QuartzTorrent
 
     attr_accessor :port
 
+    # Start the PeerClient: open the listening port, and start a new thread to begin downloading/uploading pieces.
     def start 
-      @reactor.listen("0,0,0,0",@port,:listener_socket)
+      @reactor.listen("0.0.0.0",@port,:listener_socket)
 
       @stopped = false
       @worker = Thread.new do
@@ -918,6 +924,7 @@ module QuartzTorrent
       end
     end
 
+    # Stop the PeerClient. This method may take some time to complete.
     def stop
       @logger.info "Stop called. Stopping reactor"
       @reactor.stop
@@ -953,7 +960,8 @@ module QuartzTorrent
       end
     end
 
-    # Get a hash of new TorrentDataDelegate objects keyed by torrent infohash.
+    # Get a hash of new TorrentDataDelegate objects keyed by torrent infohash. This is the method to 
+    # call to get information about the state of torrents being downloaded.
     def torrentData(infoHash = nil)
       # This will have to work by putting an event in the handler's queue, and blocking for a response.
       # The handler will build a response and return it.

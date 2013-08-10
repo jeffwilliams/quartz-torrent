@@ -2,7 +2,8 @@ require 'src/util'
 require 'src/bitfield'
 
 module QuartzTorrent
-  
+ 
+  # Information representing a single block (a part of a piece) 
   class BlockInfo
     def initialize(pieceIndex, offset, length, peers, blockIndex)
       @pieceIndex = pieceIndex
@@ -11,11 +12,18 @@ module QuartzTorrent
       @peers = peers
       @blockIndex = blockIndex
     end
-  
+ 
+    # The index of the piece that this block belongs to. 
     attr_accessor :pieceIndex
+    # Offset (in bytes) within the piece where the block begins.
     attr_accessor :offset
+    # Length of the block in bytes.
     attr_accessor :length
+    # A list of peers that have the piece this block belongs to. This block 
+    # can be requested from these peers.
     attr_accessor :peers
+    # Index of the block in units of the blockSize from the BlockState that created
+    # this object.
     attr_accessor :blockIndex
   
     # Return a new Bittorrent Request message that requests this block.
@@ -36,6 +44,9 @@ module QuartzTorrent
   # This class only supports one block size.
   class BlockState
 
+    # Create a new BlockState. Parameter 'metainfo' should be the metainfo
+    # for the torrent, 'initialPieceBitfield' should be the already-existing pieces,
+    # and 'blockSize' is the size of blocks.
     def initialize(metainfo, initialPieceBitfield, blockSize = 16384)
       raise "Block size cannot be <= 0" if blockSize <= 0
 
@@ -79,11 +90,13 @@ module QuartzTorrent
       @currentPieces = []
     end
  
+    # Get the block size
     attr_reader :blockSize
 
     # Total length of the torrent in bytes.
     attr_reader :totalLength
 
+    # Return a list of BlockInfo objects representing blocjs that should be requested from peers.
     def findRequestableBlocks(classifiedPeers, numToReturn = nil)
       # Have a list of the current pieces we are working on. Each time this method is 
       # called, check the blocks in the pieces in list order to find the blocks to return
@@ -148,6 +161,7 @@ module QuartzTorrent
       result
     end
 
+    # Set whether the block represented by the passed BlockInfo is requested or not.
     def setBlockRequested(blockInfo, bool)
       if bool
         @requestedBlocks.set blockInfo.blockIndex
@@ -156,7 +170,9 @@ module QuartzTorrent
       end
     end
 
-    # If this block completes the piece and a block is passed, the pieceIndex is yielded to the block.
+    # Mark a block as completed. If clearRequested is :clear_requested, then the block is also marked
+    # as no longer requested. If this block completes the piece and a block is passed, the pieceIndex 
+    # is yielded to the block.
     def setBlockCompleted(pieceIndex, blockOffset, bool, clearRequested = :clear_requested)
       bi = blockIndexFromPieceAndOffset(pieceIndex, blockOffset)
       @requestedBlocks.clear bi if clearRequested == :clear_requested
@@ -168,10 +184,12 @@ module QuartzTorrent
       end
     end
 
+    # Is the specified block completed (downloaded)?
     def blockCompleted?(blockInfo)
       @completeBlocks.set? blockInfo.blockIndex
     end
 
+    # Set whether the piece is completed or not.
     def setPieceCompleted(pieceIndex, bool)
       eachBlockInPiece(pieceIndex) do |blockIndex|
         if bool
@@ -182,6 +200,7 @@ module QuartzTorrent
       end
     end
 
+    # Is the specified piece completed (all blocks are downloaded)?
     def pieceCompleted?(pieceIndex)
       complete = true
       eachBlockInPiece(pieceIndex) do |blockIndex|
@@ -194,6 +213,7 @@ module QuartzTorrent
       complete
     end
 
+    # Get a bitfield representing the completed pieces.
     def completePieceBitfield
       result = Bitfield.new(@numPieces)
       result.clearAll
@@ -217,12 +237,14 @@ module QuartzTorrent
       num*@blockSize + extra
     end
 
+    # Create a new BlockInfo object using the specified information. The peers list is empty.
     def createBlockinfoByPieceResponse(pieceIndex, offset, length)
       blockIndex = pieceIndex*@blocksPerPiece + offset/@blockSize
       raise "offset in piece is not divisible by block size" if offset % @blockSize != 0
       BlockInfo.new(pieceIndex, offset, length, [], blockIndex)
     end
 
+    # Create a new BlockInfo object using the specified information. The peers list is empty.
     def createBlockinfoByBlockIndex(blockIndex)
       pieceIndex = blockIndex / @blockSize
       offset = (blockIndex % @blocksPerPiece)*@blockSize
@@ -231,6 +253,7 @@ module QuartzTorrent
       BlockInfo.new(pieceIndex, offset, length, [], blockIndex)
     end
 
+    # Create a new BlockInfo object using the specified information. 
     def createBlockinfoByPieceAndBlockIndex(pieceIndex, peersWithPiece, blockIndex)
       # If this is the very last block, then it might be smaller than the rest.
       blockSize = @blockSize
