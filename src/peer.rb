@@ -20,6 +20,8 @@ module QuartzTorrent
       @firstEstablishTime = nil
       @isUs = false
       @requestedBlocks = {}
+      @requestedBlocksSizeLastPass = nil
+      @maxRequestedBlocks = 50
     end
 
     # A TrackerPeer class with the information about the peer retrieved from
@@ -43,6 +45,9 @@ module QuartzTorrent
     # Time when the peers connection was established the first time.
     # This is nil when the peer has never had an established connection.
     attr_accessor :firstEstablishTime
+
+    # Maximum number of outstanding block requests allowed for this peer.
+    attr_accessor :maxRequestedBlocks
 
     # Peer connection state.
     # All peers start of in :disconnected. When trying to handshake, 
@@ -74,6 +79,7 @@ module QuartzTorrent
 
     # A hash of the block indexes of the outstanding blocks requested from this peer
     attr_accessor :requestedBlocks
+    attr_accessor :requestedBlocksSizeLastPass
 
     def to_s
       @trackerPeer.to_s
@@ -124,6 +130,7 @@ module QuartzTorrent
         peer.bitfield.copyFrom bitfield
       end
       peer.requestedBlocks = requestedBlocks.clone
+      peer.maxRequestedBlocks = maxRequestedBlocks
 
       peer
     end

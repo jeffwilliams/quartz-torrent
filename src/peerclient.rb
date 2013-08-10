@@ -71,12 +71,16 @@ module QuartzTorrent
       buildPeersList(torrentData)
       @downloadRate = @peers.reduce(0){ |memo, peer| memo + peer.uploadRate }
       @uploadRate = @peers.reduce(0){ |memo, peer| memo + peer.downloadRate }
+      @downloadRateDataOnly = @peers.reduce(0){ |memo, peer| memo + peer.uploadRateDataOnly }
+      @uploadRateDataOnly = @peers.reduce(0){ |memo, peer| memo + peer.downloadRateDataOnly }
       @state = torrentData.state
     end
 
     attr_reader :metainfo
     attr_reader :downloadRate
     attr_reader :uploadRate
+    attr_reader :downloadRateDataOnly
+    attr_reader :uploadRateDataOnly
     attr_reader :completedBytes
     attr_reader :peers
     attr_reader :state
@@ -572,14 +576,30 @@ module QuartzTorrent
         end
       end
 
+      # Update the allowed pending requests based on how well the peer did since last time.
+      classifiedPeers.establishedPeers.each do |peer|
+        if peer.requestedBlocksSizeLastPass
+          if peer.requestedBlocksSizeLastPass == peer.maxRequestedBlocks
+            downloaded = peer.requestedBlocksSizeLastPass - peer.requestedBlocks.size
+            if downloaded > peer.maxRequestedBlocks*8/10
+              peer.maxRequestedBlocks = peer.maxRequestedBlocks * 12 / 10
+            elsif downloaded == 0
+              peer.maxRequestedBlocks = peer.maxRequestedBlocks * 8 / 10
+            end
+            peer.maxRequestedBlocks = 10 if peer.maxRequestedBlocks < 10
+          end
+        end
+      end
+
       # Request blocks
       blockInfos = torrentData.blockState.findRequestableBlocks(classifiedPeers, 100)
       blockInfos.each do |blockInfo|
-        #peer = blockInfo.peers.first
         # Pick one of the peers that has the piece to download it from. Pick one of the
         # peers with the top 3 upload rates.
-        random = blockInfo.peers[rand(blockInfo.peers.size)]
-        peer = blockInfo.peers.sort{ |a,b| b.uploadRate.value <=> a.uploadRate.value}.first(3).push(random).shuffle.first
+        elegiblePeers = blockInfo.peers.find_all{ |p| p.requestedBlocks.length < p.maxRequestedBlocks }.sort{ |a,b| b.uploadRate.value <=> a.uploadRate.value}
+        random = elegiblePeers[rand(blockInfo.peers.size)]
+        peer = elegiblePeers.first(3).push(random).shuffle.first
+        next if ! peer
         withPeersIo(peer, "requesting block") do |io|
           if ! peer.amInterested
             # Let this peer know that I'm interested if I haven't yet.
@@ -594,6 +614,8 @@ module QuartzTorrent
           peer.requestedBlocks[blockInfo.blockIndex] = Time.new
         end
       end
+
+      classifiedPeers.establishedPeers.each { |peer| peer.requestedBlocksSizeLastPass = peer.requestedBlocks.length }
     end
 
     # Send interested or uninterested messages to peers.
@@ -745,6 +767,7 @@ module QuartzTorrent
               msg.data = result.data
               sendMessageToPeer msg, io, peer
               torrentData.bytesUploaded += msg.data.length
+              @logger.info "Sending piece to peer"
             end
           else
             @logger.error "Reading block failed: #{result.error}"

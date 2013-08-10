@@ -9,7 +9,7 @@ module QuartzTorrent
       attr_accessor :time
     end
 
-    def initialize(window = 30)
+    def initialize(window = 8)
       reset
       @window = window
       @maxSamples = 100
@@ -18,13 +18,14 @@ module QuartzTorrent
     def value
       now = Time.new
       # Age out old samples.
-      @samples.delete_if{ |s| now - s.time > @window }
+      @samples = @samples.drop_while{ |s| now - s.time > @window  }
       return 0 if @samples.size < 2
-      @samples.reduce(0){ |memo, s| memo + s.value } / (@samples.last.time - @samples.first.time)
+      @samples.last(@samples.size-1).reduce(0){ |memo, s| memo + s.value }.to_f / (now - @samples.first.time)
     end
 
     def update(sample)
-      @samples.push Sample.new(sample) if @samples.size < @maxSamples
+      @samples.push Sample.new(sample)
+      @samples.shift if @samples.size >= @maxSamples
     end
 
     def reset

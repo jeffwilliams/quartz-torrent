@@ -254,7 +254,7 @@ class DetailsScreen < Screen
     maxy, maxx = getmaxyx(@window)
     cury, curx = getyx(@window)
     torrent.peers.each do |peer|
-      break if cury > maxy 
+      break if cury >= maxy 
       showPeer(peer)
       cury += 1
     end
@@ -290,30 +290,15 @@ class DetailsScreen < Screen
     flags << ","
     flags << (peer.amInterested ? "intsting" : "!intsting" )
 
-    id = peer.trackerPeer.id
-    if id
-      newid = ""
-      id.each_byte do |b|
-        if b > 0x1f && b < 0x7f
-          newid << b
-        else
-          newid << '?'
-        end
-      end
-      id = newid
-    else
-      id = ''
-    end
-  
-    # id, host:port, upload, download, state, flags "
-    str = "  %20s %-21s Rate: %11s|%-11s %-12s %4d %s\n" % 
+    # host:port, upload, download, state, requestedblocks/maxblocks flags "
+    str = "  %-21s Rate: %11s|%-11s %-12s Pending: %4d/%4d %s\n" % 
       [
-        id,
         "#{peer.trackerPeer.ip}:#{peer.trackerPeer.port}",
         Formatter.formatSpeed(peer.uploadRate),
         Formatter.formatSpeed(peer.downloadRate),
         peer.state.to_s,
         peer.requestedBlocks.length,
+        peer.maxRequestedBlocks,
         flags       
       ]
     
