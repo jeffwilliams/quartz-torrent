@@ -528,7 +528,7 @@ module QuartzTorrent
         @logger.info "Unchoking peer #{peer}"
         withPeersIo(peer, "unchoking peer") do |io|
           msg = Unchoke.new
-          msg.serializeTo io
+          sendMessageToPeer msg, io, peer
           peer.peerChoked = false
         end
       end
@@ -537,7 +537,7 @@ module QuartzTorrent
         @logger.info "Choking peer #{peer}"
         withPeersIo(peer, "choking peer") do |io|
           msg = Choke.new
-          msg.serializeTo io
+          sendMessageToPeer msg, io, peer
           peer.peerChoked = true
         end
       end
@@ -584,12 +584,12 @@ module QuartzTorrent
           if ! peer.amInterested
             # Let this peer know that I'm interested if I haven't yet.
             msg = Interested.new
-            msg.serializeTo io
+            sendMessageToPeer msg, io, peer
             peer.amInterested = true
           end
           @logger.info "Requesting block from #{peer}: piece #{blockInfo.pieceIndex} offset #{blockInfo.offset} length #{blockInfo.length}"
           msg = blockInfo.getRequest
-          msg.serializeTo io
+          sendMessageToPeer msg, io, peer
           torrentData.blockState.setBlockRequested blockInfo, true
           peer.requestedBlocks[blockInfo.blockIndex] = Time.new
         end
@@ -668,7 +668,7 @@ module QuartzTorrent
         if ! peer.amInterested
           @logger.info "Need some pieces from peer #{peer} so sending Interested message"
           msg = Interested.new
-          msg.serializeTo currentIo
+          sendMessageToPeer msg, currentIo, peer
           peer.amInterested = true
         end
       end
@@ -698,7 +698,7 @@ module QuartzTorrent
       if ! torrentData.blockState.completePieceBitfield.set?(msg.pieceIndex)
         @logger.info "Peer #{peer} just got a piece we need so sending Interested message"
         msg = Interested.new
-        msg.serializeTo currentIo
+        sendMessageToPeer msg, currentIo, peer
         peer.amInterested = true
       end
     end
@@ -743,7 +743,7 @@ module QuartzTorrent
               msg.pieceIndex = readRequestMetadata.requestMsg.pieceIndex
               msg.blockOffset = readRequestMetadata.requestMsg.blockOffset
               msg.data = result.data
-              msg.serializeTo io
+              sendMessageToPeer msg, io, peer
               torrentData.bytesUploaded += msg.data.length
             end
           else
@@ -830,7 +830,7 @@ module QuartzTorrent
         withPeersIo(peer, "when sending Have message") do |io|
           msg = Have.new
           msg.pieceIndex = pieceIndex
-          msg.serializeTo io
+          sendMessageToPeer msg, io, peer
         end
       end
     end
@@ -848,12 +848,17 @@ module QuartzTorrent
         if needFromPeer.allClear?
           withPeersIo(peer, "when sending Uninterested message") do |io|
             msg = Uninterested.new
-            msg.serializeTo io
+            sendMessageToPeer msg, io, peer
             peer.amInterested = false
             @logger.info "Sending Uninterested message to peer #{peer}"
           end
         end
       end
+    end
+
+    def sendMessageToPeer(msg, io, peer)
+      peer.updateDownloadRate(msg)
+      msg.serializeTo io
     end
   end
 
