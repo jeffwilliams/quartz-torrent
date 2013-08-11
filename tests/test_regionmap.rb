@@ -2,7 +2,7 @@
 require 'rubygems'
 require 'minitest/unit'
 require 'minitest/autorun'
-require './src/regionmap.rb'
+require 'quartz_torrent/regionmap.rb'
 
 class TestRegionMap < MiniTest::Unit::TestCase
   def setup

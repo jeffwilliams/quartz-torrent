@@ -1,11 +1,10 @@
 #!/usr/bin/env ruby 
-$: << "."
 require 'rubygems'
 require 'minitest/unit'
 require 'minitest/autorun'
-require 'src/blockstate'
-require 'src/metainfo'
-require 'src/peer'
+require 'quartz_torrent/blockstate'
+require 'quartz_torrent/metainfo'
+require 'quartz_torrent/peer'
 
 include QuartzTorrent
 

@@ -2,7 +2,7 @@
 require 'rubygems'
 require 'minitest/unit'
 require 'minitest/autorun'
-require 'src/metainfo'
+require 'quartz_torrent/metainfo'
 
 TestDataDir = "tests/data"
 

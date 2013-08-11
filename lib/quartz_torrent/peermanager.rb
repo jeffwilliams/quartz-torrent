@@ -1,4 +1,4 @@
-require './src/classifiedpeers.rb'
+require 'quartz_torrent/classifiedpeers.rb'
 
 module QuartzTorrent
   class ManagePeersResult

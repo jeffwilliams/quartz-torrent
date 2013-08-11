@@ -2,7 +2,7 @@
 require 'rubygems'
 require 'minitest/unit'
 require 'minitest/autorun'
-require 'src/trackerclient'
+require 'quartz_torrent/trackerclient'
 
 TestDataDir = "tests/data"
 
@@ -18,7 +18,7 @@ end
 
 class TrackerTestClient < QuartzTorrent::TrackerClient
   def initialize(requestCallback)
-    super()
+    super(nil)
     @requestCallback = requestCallback
   end
 

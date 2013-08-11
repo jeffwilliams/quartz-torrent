@@ -1,4 +1,4 @@
-require './src/bitfield.rb'
+require 'quartz_torrent/bitfield.rb'
 module QuartzTorrent
 
   # Represents a bittorrent peer protocol generic request message (not the specific piece request message).

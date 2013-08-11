@@ -1,5 +1,5 @@
-require 'src/util'
-require 'src/bitfield'
+require 'quartz_torrent/util'
+require 'quartz_torrent/bitfield'
 
 module QuartzTorrent
  

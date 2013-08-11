@@ -1,4 +1,4 @@
-require 'src/rate'
+require 'quartz_torrent/rate'
 
 module QuartzTorrent
   class Peer

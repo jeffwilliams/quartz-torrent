@@ -1,7 +1,7 @@
 $: << "."
 require 'fileutils'
 require 'getoptlong'
-require 'src/peerclient'
+require 'quartz_torrent'
 
 baseDirectory = "tmp"
 port = 9998

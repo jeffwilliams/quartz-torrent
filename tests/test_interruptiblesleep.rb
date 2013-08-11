@@ -2,7 +2,7 @@
 require 'rubygems'
 require 'minitest/unit'
 require 'minitest/autorun'
-require 'src/interruptiblesleep'
+require 'quartz_torrent/interruptiblesleep'
 
 class TestInterruptibleSleep < MiniTest::Unit::TestCase
   def setup

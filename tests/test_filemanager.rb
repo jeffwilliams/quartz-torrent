@@ -3,9 +3,9 @@ require 'rubygems'
 require 'minitest/unit'
 require 'minitest/autorun'
 require 'fileutils'
-require './src/metainfo.rb'
-require './src/filemanager.rb'
-require './src/reactor.rb'
+require 'quartz_torrent/metainfo.rb'
+require 'quartz_torrent/filemanager.rb'
+require 'quartz_torrent/reactor.rb'
 
 TestsDir = "tests"
 TestDataDir = "tests/data"

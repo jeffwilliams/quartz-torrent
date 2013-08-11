@@ -3,9 +3,9 @@ $: << "."
 require 'rubygems'
 require 'minitest/unit'
 require 'minitest/autorun'
-require 'src/peermanager'
-require 'src/trackerclient'
-require 'src/peer'
+require 'quartz_torrent/peermanager'
+require 'quartz_torrent/trackerclient'
+require 'quartz_torrent/peer'
 
 include QuartzTorrent
 

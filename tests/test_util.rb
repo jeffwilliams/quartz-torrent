@@ -2,7 +2,7 @@
 require 'rubygems'
 require 'minitest/unit'
 require 'minitest/autorun'
-require 'src/util'
+require 'quartz_torrent/util'
 
 include QuartzTorrent
 

@@ -4,6 +4,10 @@ QuartzTorrent -- A Ruby Bittorrent Library
 Like the title says, a bittorrent library implemented in pure ruby. Currently 
 the library works, but is still alpha.
 
+Features:
+---------
+  - UDP Tracker support
+
 To-Do
 -----
 
@@ -21,24 +25,34 @@ To-Do
 
     Alternately, a simpler approach could be to begin by queueing 100 requests, and scaling up or back based on the amount
     remaining next iteration.
+  - Magnet links support
   - Allow pausing/unpausing torrents
   - Package library as a gem
   - Implement rate limiting
   - Documentation
   - Help screen in curses downloader
 
+
 Requirements
 ------------
 
-ruby 1.9.1
-bencode (0.8.0)
-pqueue (2.0.2)
-rbcurse-core (0.0.14)
+This library has been tested with ruby1.9.1. The required gems are listed in the gemspec.
+
+Running the curses client requires rbcurse-core (0.0.14).
 
 Running Tests
 -------------
 
-Run the tests as i.e.:
+Run the tests as:
 
-ruby1.9.1 tests/test_filemanager.rb
+    rake test
+
+You can run a specific test using, i.e.:
+
+    rake test TEST=tests/test_reactor.rb
+
+And a specific test case in a test using:
+
+    ruby1.9.1 -Ilib tests/test_reactor.rb -n test_client
+
 

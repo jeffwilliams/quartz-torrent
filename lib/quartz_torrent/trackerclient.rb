@@ -1,10 +1,10 @@
-require "./src/log"
-require "./src/metainfo"
-require "./src/udptrackermsg"
-require "./src/httptrackerclient"
-require "./src/udptrackerclient"
-require "./src/interruptiblesleep"
-require "./src/util"
+require "quartz_torrent/log"
+require "quartz_torrent/metainfo"
+require "quartz_torrent/udptrackermsg"
+require "quartz_torrent/httptrackerclient"
+require "quartz_torrent/udptrackerclient"
+require "quartz_torrent/interruptiblesleep"
+require "quartz_torrent/util"
 require "net/http"
 require "cgi"
 require "thread"
@@ -258,31 +258,4 @@ module QuartzTorrent
   end
 
 
-end
-
-if $0 =~ /src\/trackerclient.rb/
-  torrent = ARGV[0]
-  if ! torrent
-    torrent = "tests/data/testtorrent.torrent"
-  end
-  metainfo = QuartzTorrent::Metainfo.createFromFile(torrent)
-  client = QuartzTorrent::TrackerClient.create(metainfo)
-  
-  running = true
-
-  Signal.trap('SIGINT') do
-    puts "Got SIGINT"
-    running = false
-  end
-
-  while running do
-    result = client.peers
-    puts result.inspect
-    puts "PEERS:"
-    puts "  " + result.join("\n  ")
-    sleep 2
-  end
- 
-  client.stop
-  
 end

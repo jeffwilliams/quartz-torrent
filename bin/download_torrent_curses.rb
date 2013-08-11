@@ -1,11 +1,10 @@
 #!/usr/bin/env ruby
-$: << "."
 require 'fileutils'
 require 'getoptlong'
 require "ncurses"
-require 'src/peerclient'
-require 'src/formatter'
-require 'src/memprofiler'
+require 'quartz_torrent'
+require 'quartz_torrent/memprofiler'
+require 'quartz_torrent/formatter'
 
 
 

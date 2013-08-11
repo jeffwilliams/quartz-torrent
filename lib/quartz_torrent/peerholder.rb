@@ -1,5 +1,5 @@
-require './src/peer.rb'
-require 'src/util'
+require 'quartz_torrent/peer.rb'
+require 'quartz_torrent/util'
 
 module QuartzTorrent
   class PeerHolder

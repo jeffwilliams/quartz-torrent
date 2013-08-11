@@ -5,7 +5,7 @@ require 'minitest/autorun'
 require 'socket'
 require 'logger'
 require 'fileutils'
-require './src/reactor.rb'
+require 'quartz_torrent/reactor.rb'
 
 TestDataDir = "tests/data"
 TestDataTmpDir = "tests/data/tmp"
@@ -80,6 +80,7 @@ class SimpleHandler < QuartzTorrent::Handler
 
   def connectError(metadata, details)
     puts "SimpleHandler: connect error: #{details}"
+    puts "Backtrace: #{details.backtrace.join("\n")}"
     @connectErrorFlag = true
     stopReactor
   end

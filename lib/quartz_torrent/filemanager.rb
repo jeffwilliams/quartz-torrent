@@ -1,10 +1,10 @@
 require 'digest/sha1'
 require 'fileutils'
 require 'thread'
-require './src/regionmap.rb'
-require './src/bitfield.rb'
-require './src/util.rb'
-require './src/semaphore.rb'
+require 'quartz_torrent/regionmap.rb'
+require 'quartz_torrent/bitfield.rb'
+require 'quartz_torrent/util.rb'
+require 'quartz_torrent/semaphore.rb'
 
 include QuartzTorrent
 

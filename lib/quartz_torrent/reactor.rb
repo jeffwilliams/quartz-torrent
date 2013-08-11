@@ -447,13 +447,14 @@ module QuartzTorrent
     # (and again each duration if recurring) while false specifies that the timer will only
     # expire the first time after it's duration elapses.
     def scheduleTimer(duration, metainfo = nil, recurring = true, immed = false)
-      @timerManager.add(duration, metainfo, recurring, immed)
+      timerInfo = @timerManager.add(duration, metainfo, recurring, immed)
       # This timer may expire sooner than the current sleep we are doing in select(). To make
       # sure we will write to the event pipe to break out of select().
       return if @currentEventPipeChars > 0
       @eventWrite.write 'x'
       @currentEventPipeChars += 1
       @eventWrite.flush
+      timerInfo
     end  
 
     # Meant to be called from the handler. Adds the specified data to the outgoing queue for the current io
@@ -653,7 +654,7 @@ module QuartzTorrent
         # Connection failed.
         @logger.debug "connection failed for IO metainfo=#{@currentIoInfo.metainfo}: #{$!}" if @logger
         @currentHandlerCallback = :connect_error
-        @handler.connectError(ioInfo.metainfo, "Connection failed: #{$!}")
+        @handler.connectError(ioInfo.metainfo, $!)
         disposeIo(ioInfo)
       end
     end

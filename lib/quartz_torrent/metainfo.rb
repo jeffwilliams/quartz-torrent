@@ -1,4 +1,4 @@
-require './src/log'
+require 'quartz_torrent/log'
 require 'bencode'
 require 'digest/sha1'
 

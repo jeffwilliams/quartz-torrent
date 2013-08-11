@@ -2,7 +2,7 @@
 require 'rubygems'
 require 'minitest/unit'
 require 'minitest/autorun'
-require './src/bitfield'
+require 'quartz_torrent/bitfield'
 
 class TestBitfield < MiniTest::Unit::TestCase
   def setup
