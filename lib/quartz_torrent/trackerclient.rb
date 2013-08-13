@@ -52,11 +52,11 @@ module QuartzTorrent
 
   # Dynamic parameters needed when making a request to the tracker.
   class TrackerDynamicRequestParams
-    def initialize(metainfo = nil)
+    def initialize(dataLength = nil)
       @uploaded = 0
       @downloaded = 0
-      if metainfo
-        @left = metainfo.info.dataLength.to_i
+      if dataLength
+        @left = dataLength.to_i
       else
         @left = 0
       end
@@ -93,7 +93,9 @@ module QuartzTorrent
   # This class represents a connection to a tracker for a specific torrent. It can be used to get
   # peers for that torrent.
   class TrackerClient
-    def initialize(metainfo, maxErrors = 20)
+    include QuartzTorrent
+
+    def initialize(announceUrl, infoHash, dataLength = 0, maxErrors = 20)
       @peerId = "-QR0001-" # Azureus style
       @peerId << Process.pid.to_s
       @peerId = @peerId + "x" * (20-@peerId.length)
@@ -109,14 +111,14 @@ module QuartzTorrent
       @event = :started
       @worker = nil
       @logger = LogManager.getLogger("tracker_client")
-      @metainfo = metainfo
+      @announceUrl = announceUrl
+      @infoHash = infoHash
       @peersChangedListeners = []
-      @dynamicRequestParamsBuilder = Proc.new{ TrackerDynamicRequestParams.new(@metainfo)  }
+      @dynamicRequestParamsBuilder = Proc.new{ TrackerDynamicRequestParams.new(dataLength) }
     end
     
     attr_reader :peerId
     attr_accessor :port
-    attr_reader :metainfo
     # This should be set to a Proc that when called will return a TrackerDynamicRequestParams object
     # with up-to-date information.
     attr_accessor :dynamicRequestParamsBuilder
@@ -148,16 +150,21 @@ module QuartzTorrent
       @errors
     end
 
-    def self.create(metainfo, start = true)
+    # Create a new TrackerClient using the passed information.
+    def self.create(announceUrl, infoHash, dataLength = 0, start = true)
       result = nil
-      if metainfo.announce =~ /udp:\/\//
-        result = UdpTrackerClient.new(metainfo)
+      if announceUrl =~ /udp:\/\//
+        result = UdpTrackerClient.new(announceUrl, infoHash, dataLength)
       else
-        result = HttpTrackerClient.new(metainfo)
+        result = HttpTrackerClient.new(announceUrl, infoHash, dataLength)
       end
       result.start if start
 
       result
+    end
+
+    def self.createFromMetainfo(metainfo, start = true)
+      create(metainfo.announce, metainfo.infoHash, metainfo.info.dataLength, start)
     end
 
     # Start the worker thread

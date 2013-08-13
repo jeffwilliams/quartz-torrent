@@ -3,14 +3,14 @@ module QuartzTorrent
   class UdpTrackerClient < TrackerClient
     # Set UDP receive length to a value that allows up to 100 peers to be returned in an announce.
     ReceiveLength = 620 
-    def initialize(metainfo)
-      super(metainfo)
+    def initialize(announceUrl, infoHash, dataLength)
+      super(announceUrl, infoHash, dataLength)
       @logger = LogManager.getLogger("udp_tracker_client")
-      if metainfo.announce =~ /udp:\/\/([^:]+):(\d+)/
+      if @announceUrl =~ /udp:\/\/([^:]+):(\d+)/
         @host = $1
         @trackerPort = $2
       else
-        throw "UDP Tracker announce URL is invalid: #{metainfo.announce}"
+        throw "UDP Tracker announce URL is invalid: #{announceUrl}"
       end
     end
 
@@ -42,7 +42,7 @@ module QuartzTorrent
       # Send announce request      
       req = UdpTrackerAnnounceRequest.new(connectionId)
       req.peerId = @peerId
-      req.infoHash = @metainfo.infoHash
+      req.infoHash = @infoHash
       req.downloaded = dynamicParams.downloaded
       req.left = dynamicParams.left
       req.uploaded = dynamicParams.uploaded

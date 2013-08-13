@@ -8,7 +8,7 @@ TestDataDir = "tests/data"
 
 class TestHttpTrackerClient < QuartzTorrent::HttpTrackerClient
   def initialize
-    super(nil)
+    super(nil, nil, 0)
   end
 
   def testDecodePeers(p)
@@ -18,7 +18,7 @@ end
 
 class TrackerTestClient < QuartzTorrent::TrackerClient
   def initialize(requestCallback)
-    super(nil)
+    super(nil, nil)
     @requestCallback = requestCallback
   end
 

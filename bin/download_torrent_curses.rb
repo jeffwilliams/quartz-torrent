@@ -6,7 +6,7 @@ require 'quartz_torrent'
 require 'quartz_torrent/memprofiler'
 require 'quartz_torrent/formatter'
 
-
+include QuartzTorrent
 
 DebugTty = "/dev/pts/8"
 
@@ -567,11 +567,9 @@ begin
 
   #puts "Loading torrent #{torrent}"
   metainfo = QuartzTorrent::Metainfo.createFromFile(torrent)
-  trackerclient = QuartzTorrent::TrackerClient.create(metainfo, false)
-  trackerclient.port = port
   peerclient = QuartzTorrent::PeerClient.new(baseDirectory)
   peerclient.port = port
-  peerclient.addTrackerClient(trackerclient)
+  peerclient.addMetainfo(metainfo)
 
   scrManager.peerClient = peerclient
 

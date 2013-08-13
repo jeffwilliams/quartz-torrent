@@ -11,7 +11,6 @@ require "quartz_torrent/blockstate.rb"
 require "quartz_torrent/filemanager.rb"
 require "quartz_torrent/semaphore.rb"
 
-include QuartzTorrent
 
 module QuartzTorrent
  
@@ -100,6 +99,8 @@ module QuartzTorrent
 
   # This class implements a Reactor Handler object. This Handler implements the PeerClient.
   class PeerClientHandler < QuartzTorrent::Handler
+    include QuartzTorrent
+  
     def initialize(baseDirectory)
       # Hash of TorrentData objects, keyed by torrent infoHash
       @torrentData = {}
@@ -120,20 +121,20 @@ module QuartzTorrent
     attr_reader :torrentData
 
     # Add a new tracker client. This effectively adds a new torrent to download.
-    def addTrackerClient(trackerclient)
-      raise "There is already a tracker registered for torrent #{bytesToHex(trackerclient.metainfo.infoHash)}" if @torrentData.has_key? trackerclient.metainfo.infoHash
-      torrentData = TorrentData.new(trackerclient.metainfo, trackerclient)
-      torrentData.pieceManager = QuartzTorrent::PieceManager.new(@baseDirectory, trackerclient.metainfo)
-      @torrentData[trackerclient.metainfo.infoHash] = torrentData
+    def addTrackerClient(metainfo, trackerclient)
+      raise "There is already a tracker registered for torrent #{bytesToHex(metainfo.infoHash)}" if @torrentData.has_key? metainfo.infoHash
+      torrentData = TorrentData.new(metainfo, trackerclient)
+      torrentData.pieceManager = QuartzTorrent::PieceManager.new(@baseDirectory, metainfo)
+      @torrentData[metainfo.infoHash] = torrentData
 
       # Check the existing pieces of the torrent.
       torrentData.state = :checking_pieces
-      @logger.info "Checking pieces of torrent #{bytesToHex(trackerclient.metainfo.infoHash)} asynchronously."
+      @logger.info "Checking pieces of torrent #{bytesToHex(metainfo.infoHash)} asynchronously."
       id = torrentData.pieceManager.findExistingPieces
       torrentData.pieceManagerRequestMetadata[id] = PieceManagerRequestMetadata.new(:check_existing, nil)
 
       # Schedule checking for PieceManager results
-      @reactor.scheduleTimer(@requestBlocksPeriod, [:check_piece_manager, trackerclient.metainfo.infoHash], true, false)
+      @reactor.scheduleTimer(@requestBlocksPeriod, [:check_piece_manager, metainfo.infoHash], true, false)
     end
 
     # Remove a torrent.
@@ -952,12 +953,14 @@ module QuartzTorrent
     end
 
     # Add a new torrent to manage.
-    def addTrackerClient(trackerclient)
-      @handler.addTrackerClient(trackerclient)
+    def addMetainfo(metainfo)
+      trackerclient = TrackerClient.createFromMetainfo(metainfo, false)
+      trackerclient.port = @port
+      @handler.addTrackerClient(metainfo, trackerclient)
 
       trackerclient.dynamicRequestParamsBuilder = Proc.new do
-        torrentData = @handler.torrentData[trackerclient.metainfo.infoHash]
-        result = TrackerDynamicRequestParams.new(trackerclient.metainfo)
+        torrentData = @handler.torrentData[metainfo.infoHash]
+        result = TrackerDynamicRequestParams.new(metainfo.info.dataLength)
         if torrentData && torrentData.blockState
           result.left = torrentData.blockState.totalLength - torrentData.blockState.completedLength
           result.downloaded = torrentData.bytesDownloaded

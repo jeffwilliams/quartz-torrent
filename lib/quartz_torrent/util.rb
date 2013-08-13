@@ -55,5 +55,6 @@ module QuartzTorrent
     isLinux = RUBY_PLATFORM.downcase.include?("linux")
     Thread.current[:lwpid] = syscall(SYSCALL_GETTID) if isLinux
   end
+
 end
 

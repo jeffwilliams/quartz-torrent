@@ -4,8 +4,8 @@ module QuartzTorrent
 
   # A tracker client that uses the HTTP protocol. This is the classic BitTorrent tracker protocol.
   class HttpTrackerClient < TrackerClient
-    def initialize(metainfo)
-      super(metainfo)
+    def initialize(announceUrl, infoHash, dataLength)
+      super(announceUrl, infoHash, dataLength)
       @startSent = false
       @logger = LogManager.getLogger("http_tracker_client")
     end
@@ -18,13 +18,12 @@ module QuartzTorrent
     #def getPeers(event = nil)
     def request(event = nil)
 
-      uri = URI(@metainfo.announce)
-
+      uri = URI(@announceUrl)
   
       dynamicParams = @dynamicRequestParamsBuilder.call
 
       params = {}
-      params['info_hash'] = CGI.escape(@metainfo.infoHash)
+      params['info_hash'] = CGI.escape(@infoHash)
       params['peer_id'] = @peerId
       params['port'] = @port
       params['uploaded'] = dynamicParams.uploaded.to_s

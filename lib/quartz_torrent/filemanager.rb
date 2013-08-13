@@ -6,8 +6,6 @@ require 'quartz_torrent/bitfield.rb'
 require 'quartz_torrent/util.rb'
 require 'quartz_torrent/semaphore.rb'
 
-include QuartzTorrent
-
 module QuartzTorrent
   class RequestedBlock
     attr_accessor :index

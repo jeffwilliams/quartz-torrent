@@ -3,6 +3,8 @@ require 'fileutils'
 require 'getoptlong'
 require 'quartz_torrent'
 
+include QuartzTorrent
+
 baseDirectory = "tmp"
 port = 9998
 
@@ -19,7 +21,7 @@ opts.each do |opt, arg|
   end
 end
 
-QuartzTorrent::LogManager.initializeFromEnv
+LogManager.initializeFromEnv
 #QuartzTorrent::LogManager.setLevel "peerclient", :info
 LogManager.logFile= "stdout"
 LogManager.defaultLevel= :info
@@ -41,12 +43,11 @@ if ! torrent
   torrent = "tests/data/testtorrent.torrent"
 end
 puts "Loading torrent #{torrent}"
-metainfo = QuartzTorrent::Metainfo.createFromFile(torrent)
-trackerclient = QuartzTorrent::TrackerClient.create(metainfo, false)
-trackerclient.port = port
-peerclient = QuartzTorrent::PeerClient.new(baseDirectory)
+
+metainfo = Metainfo.createFromFile(torrent)
+peerclient = PeerClient.new(baseDirectory)
 peerclient.port = port
-peerclient.addTrackerClient(trackerclient)
+peerclient.addMetainfo(metainfo)
 
 
 running = true
@@ -59,7 +60,7 @@ end
 
 initThread("main")
 Signal.trap('SIGUSR1') do
-  QuartzTorrent::logBacktraces
+  QuartzTorrent.logBacktraces
 end
 
 puts "Starting peer client"
