@@ -183,6 +183,13 @@ module QuartzTorrent
       outgoing.peerId = trackerclient.peerId
       outgoing.infoHash = torrentData.metainfo.infoHash
       outgoing.serializeTo currentIo
+
+      # Send extended handshake if the peer supports extensions
+      if (msg.reserved.unpack("C8")[5] & 0x10) != 0
+        @logger.warn "Peer supports extensions. Sending extended handshake"
+        extended = ExtendedHandshake.new
+        extended.serializeTo currentIo
+      end
  
       # Read incoming handshake's peerid
       msg.peerId = currentIo.read(PeerHandshake::PeerIdLen)
@@ -280,7 +287,8 @@ module QuartzTorrent
       else
         begin
           @logger.debug "Reading wire-message from #{peer}"
-          msg = PeerWireMessage.unserializeFrom currentIo
+          msg = peer.peerMsgSerializer.unserializeFrom currentIo
+          #msg = PeerWireMessage.unserializeFrom currentIo
         rescue EOFError
           @logger.info "Peer #{peer} disconnected."
           setPeerDisconnected(peer)
@@ -332,6 +340,8 @@ module QuartzTorrent
         handleHave(msg, peer)
       elsif msg.is_a? KeepAlive
         @logger.warn "Received keep alive message from peer."
+      elsif msg.is_a? ExtendedHandshake
+        @logger.warn "Received extended handshake message from peer."
       else
         @logger.warn "Received a #{msg.class} message but handler is not implemented"
       end
@@ -458,6 +468,14 @@ module QuartzTorrent
 
       updatePeerWithHandshakeInfo(torrentData, msg, peer)
       peer.bitfield = Bitfield.new(torrentData.metainfo.info.pieces.length)
+
+      # Send extended handshake if the peer supports extensions
+      if (msg.reserved.unpack("C8")[5] & 0x10) != 0
+        @logger.warn "Peer supports extensions. Sending extended handshake"
+        extended = ExtendedHandshake.new
+        extended.serializeTo currentIo
+      end
+
       true
     end
 
@@ -884,6 +902,7 @@ module QuartzTorrent
 
     def sendMessageToPeer(msg, io, peer)
       peer.updateDownloadRate(msg)
+      peer.peerMsgSerializer.serializeTo(msg, io)
       msg.serializeTo io
     end
   end

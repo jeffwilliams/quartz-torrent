@@ -1,4 +1,5 @@
 require 'quartz_torrent/rate'
+require 'quartz_torrent/peermsgserialization'
 
 module QuartzTorrent
   class Peer
@@ -22,6 +23,7 @@ module QuartzTorrent
       @requestedBlocks = {}
       @requestedBlocksSizeLastPass = nil
       @maxRequestedBlocks = 50
+      @peerMsgSerializer = PeerWireMessageSerializer.new
     end
 
     # A TrackerPeer class with the information about the peer retrieved from
@@ -81,6 +83,9 @@ module QuartzTorrent
     attr_accessor :requestedBlocks
     attr_accessor :requestedBlocksSizeLastPass
 
+    # A PeerWireMessageSerializer that can unserialize and serialize messages to and from this peer.
+    attr_accessor :peerMsgSerializer
+
     def to_s
       @trackerPeer.to_s
     end
@@ -132,6 +137,7 @@ module QuartzTorrent
       end
       peer.requestedBlocks = requestedBlocks.clone
       peer.maxRequestedBlocks = maxRequestedBlocks
+      peer.peerMsgSerializer = peerMsgSerializer
 
       peer
     end

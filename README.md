@@ -6,13 +6,13 @@ the library works, but is still alpha.
 
 Features:
 ---------
-  - UDP Tracker support
+  - BEP 15: UDP Tracker support
 
 To-Do
 -----
 
   - Shutdown takes a long time
-  - Implement endgame strategy
+  - Implement endgame strategy and support Cancel messages.
   - Currently when we request blocks we request a fixed amount from the first peer returned from the findRequestableBlocks
     call. We should spread the requests out to other peers as well if we have saturated the first peer's connection.
     We could tell by the peer's upload rate: upload_rate/(block_size/request_blocks_period) is the ratio of peer's measured
@@ -25,7 +25,7 @@ To-Do
 
     Alternately, a simpler approach could be to begin by queueing 100 requests, and scaling up or back based on the amount
     remaining next iteration.
-  - Magnet links support
+  - Magnet links support. Implement BEP 10, BEP 9, BEP 5(?)
   - Allow pausing/unpausing torrents
   - Package library as a gem
   - Implement rate limiting

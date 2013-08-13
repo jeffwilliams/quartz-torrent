@@ -14,6 +14,7 @@ module QuartzTorrent
     def initialize
       @infoHash = nil
       @peerId = nil
+      @reserved = nil
     end
 
     def peerId=(v)
@@ -26,8 +27,9 @@ module QuartzTorrent
       @infoHash = v
     end
 
-    attr_reader :peerId
-    attr_reader :infoHash
+    attr_accessor :peerId
+    attr_accessor :infoHash
+    attr_accessor :reserved
 
     # Serialize this PeerHandshake message to the passed io object. Throws exceptions on failure.
     def serializeTo(io)
@@ -35,7 +37,7 @@ module QuartzTorrent
       raise "InfoHash is not set" if ! @infoHash
       result = [ProtocolName.length].pack("C")
       result << ProtocolName
-      result << [0,0,0,0,0,0,0,0].pack("C8") # Reserved
+      result << [0,0,0,0,0,0x10,0,0].pack("C8") # Reserved. 0x10 means we support extensions (BEP 10).
       result << @infoHash
       result << @peerId
       
@@ -49,7 +51,7 @@ module QuartzTorrent
       len = io.read(1).unpack("C")[0]
       proto = io.read(len)
       raise "Unrecognized peer protocol name '#{proto}'" if proto != ProtocolName
-      io.read(8) # reserved
+      result.reserved = io.read(8) # reserved
       result.infoHash = io.read(InfoHashLen)
       result.peerId = io.read(PeerIdLen)
       result
@@ -63,7 +65,7 @@ module QuartzTorrent
       len = io.read(1).unpack("C")[0]
       proto = io.read(len)
       raise "Unrecognized peer protocol name '#{proto}'" if proto != ProtocolName
-      io.read(8) # reserved
+      result.reserved = io.read(8) # reserved
       result.infoHash = io.read(InfoHashLen)
       result
     end
@@ -82,8 +84,7 @@ module QuartzTorrent
     MessageRequest = 6
     MessagePiece = 7
     MessageCancel = 8
-
-    @@classForMessage = nil
+    MessageExtended = 20
 
     def initialize(messageId)
       @messageId = messageId
@@ -106,24 +107,6 @@ module QuartzTorrent
       payloadLength + 5
     end
 
-    def self.unserializeFrom(io)
-      packedLength = io.read(4)
-      raise EOFError.new if packedLength.length == 0
-
-      length = packedLength.unpack("N")[0]
-      raise "Received peer message with length #{length}. All messages must have length >= 0" if length < 0
-      return KeepAlive.new if length == 0
-      
-      id = io.read(1).unpack("C")[0]
-      payload = io.read(length-1)
-
-      raise "Unsupported peer message id #{id}" if id >= self.classForMessage.length
-
-      result = self.classForMessage[id].new
-      result.unserialize(payload)
-      result
-    end
-
     def unserialize(payload)
       raise "Subclasses of PeerWireMessage must implement unserialize but #{self.class} didn't"
     end
@@ -131,14 +114,9 @@ module QuartzTorrent
     def to_s
       "#{this.class} message"
     end
-
-    private
-    def self.classForMessage
-      @@classForMessage = [Choke, Unchoke, Interested, Uninterested, Have, BitfieldMessage, Request, Piece, Cancel] if @@classForMessage.nil?
-      @@classForMessage
-    end
   end
 
+  # KeepAlive message. Sent periodically to ensure peer is available.
   class KeepAlive < PeerWireMessage
     def initialize
       super(MessageKeepAlive)
@@ -157,6 +135,7 @@ module QuartzTorrent
     end
   end
 
+  # Choke message. Sent to tell peer they are choked.
   class Choke < PeerWireMessage
     def initialize
       super(MessageChoke)
@@ -170,6 +149,7 @@ module QuartzTorrent
     end
   end
   
+  # Unchoke message. Sent to tell peer they are unchoked.
   class Unchoke < PeerWireMessage
     def initialize
       super(MessageUnchoke)
@@ -181,6 +161,7 @@ module QuartzTorrent
     end
   end
 
+  # Interested message. Sent to tell peer we are interested in some piece they have.
   class Interested < PeerWireMessage
     def initialize
       super(MessageInterested)
@@ -192,6 +173,7 @@ module QuartzTorrent
     end
   end
 
+  # Uninterested message. Sent to tell peer we are not interested in any piece they have.
   class Uninterested < PeerWireMessage
     def initialize
       super(MessageUninterested)
@@ -203,6 +185,7 @@ module QuartzTorrent
     end
   end
 
+  # Have message. Sent to all connected peers to notify that we have completed downloading the specified piece.
   class Have < PeerWireMessage
     def initialize
       super(MessageHave)
@@ -229,6 +212,7 @@ module QuartzTorrent
     end
   end
 
+  # Bitfield message. Sent on initial handshake to notify peer of what pieces we have.
   class BitfieldMessage < PeerWireMessage
     def initialize
       super(MessageBitfield)
@@ -251,6 +235,7 @@ module QuartzTorrent
     end
   end
   
+  # Request message. Request a block within a piece.
   class Request < PeerWireMessage
     def initialize
       super(MessageRequest)
@@ -279,6 +264,7 @@ module QuartzTorrent
     end
   end
  
+  # Piece message. Response to a Request message containing the block of data within a piece.
   class Piece < PeerWireMessage
     def initialize
       super(MessagePiece)
@@ -307,6 +293,7 @@ module QuartzTorrent
     end
   end
  
+  # Cancel message. Cancel an outstanding request.
   class Cancel < PeerWireMessage
     def initialize
       super(MessageCancel)
@@ -332,6 +319,81 @@ module QuartzTorrent
     def to_s
       s = super
       s + ": piece index=#{@pieceIndex}, block offset=#{@blockOffset}, block length=#{@blockLength}"
+    end
+  end
+
+  # Extended message. These are extra messages not defined in the base protocol.
+  class Extended < PeerWireMessage
+    def initialize
+      super(MessageExtended)
+    end
+
+    attr_accessor :extendedMessageId
+
+    def payloadLength
+      1 + extendedMsgPayloadLength
+    end
+
+    def unserialize(payload)
+      @extendedMessageId = payload.unpack("C")
+    end
+
+    def serializeTo(io)
+      super(io)
+      io.write [@extendedMessageId].pack("C")
+    end
+
+    def to_s
+      s = super
+      s + ": extendedMessageId=#{@extendedMessageId}"
+    end
+
+    protected
+    def extendedMsgPayloadLength
+      raise "Subclasses of Extended must implement extendedMsgPayloadLength"
+    end
+
+    private
+    # Given an extended message id, return the subclass of Extended for that message.
+    # peerExtendedMessageList should be an array indexed by extended message id that returns a subclass of Extended
+    def self.classForMessage(id, peerExtendedMessageList)
+      return ExtendedHandshake if id == 0
+ 
+      raise "Unknown extended peer message id #{id}" if id > peerExtendedMessageList
+      peerExtendedMessageMap[id]
+    end
+  end
+
+  # An Extended Handshake message. Used to negotiate supported extensions.
+  class ExtendedHandshake < Extended
+    def initialize
+      super()
+      @dict = {}
+      @extendedMessageId = 0
+    end
+
+    attr_accessor :dict
+
+    def unserialize(payload)
+      super(payload)
+      payload = payload[1,payload.length]
+      begin
+        @dict = payload.bdecode
+      rescue
+        e = RuntimeError.new("Error bdecoding payload '#{payload}' (payload length = #{payload.length})")
+        e.set_backtrace($!.backtrace)
+        raise e
+      end
+    end
+
+    def serializeTo(io)
+      super(io)
+      io.write dict.bencode
+    end
+
+    private
+    def extendedMsgPayloadLength
+      dict.bencode.length
     end
   end
 
