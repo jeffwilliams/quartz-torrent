@@ -1,4 +1,6 @@
 class Hash
+  # Treat the array as a hash of lists. This method will append 'value' to the list
+  # at key 'key' in the hash. If there is no list for 'key', one is created.
   def pushToList(key, value)
     list = self[key]
     if ! list
