@@ -41,17 +41,19 @@ module QuartzTorrent
     attr_accessor :length
   end
 
-  # Maps pieces to sections of files
+  # Maps pieces to sections of files. 
   class PieceMapper
-    def initialize(baseDirectory, metainfo)
-      @metainfo = metainfo
-      @pieceSize = metainfo.info.pieceLen
+    # Create a new PieceMapper that will map to files inside 'baseDirectory'. Parameter 'torrinfo' should
+    # be a Metainfo::Info object (the info part of the metainfo).
+    def initialize(baseDirectory, torrinfo)
+      @torrinfo = torrinfo
+      @pieceSize = torrinfo.pieceLen
       @logger = LogManager.getLogger("piecemapper")
 
       @fileRegionMap = RegionMap.new
       offset = 0
       @logger.debug "Map (offset to path):"
-      metainfo.info.files.each do |file|
+      torrinfo.files.each do |file|
         offset += file.length
         path = baseDirectory + File::SEPARATOR + file.path
         @fileRegionMap.add offset-1, path
@@ -141,13 +143,15 @@ module QuartzTorrent
 
   # Can read and write pieces and blocks of a torrent.
   class PieceIO
-    def initialize(baseDirectory, metainfo, ioManager = IOManager.new)
+    # Create a new PieceIO that will map to files inside 'baseDirectory'. Parameter 'torrinfo' should
+    # be a Metainfo::Info object (the info part of the metainfo).
+    def initialize(baseDirectory, torrinfo, ioManager = IOManager.new)
       @baseDirectory = baseDirectory
-      @metainfo = metainfo
-      @pieceMapper = PieceMapper.new(baseDirectory, metainfo)
+      @torrinfo = torrinfo
+      @pieceMapper = PieceMapper.new(baseDirectory, torrinfo)
       @ioManager = ioManager
       @logger = LogManager.getLogger("pieceio")
-      @torrentDataLength = metainfo.info.dataLength
+      @torrentDataLength = torrinfo.dataLength
     end
 
     # Get the overall length of the torrent data
@@ -276,10 +280,12 @@ module QuartzTorrent
       end
     end
 
-    # Alert callback will be called when an operation is complete. The 
+    # Create a new PieceManager that will map to files inside 'baseDirectory'. Parameter 'torrinfo' should
+    # be a Metainfo::Info object (the info part of the metainfo).
+    # Parameter 'alertCallback' should be a Proc. It will be called when an operation is complete. The 
     # alerted code can then retrieve the events from the completed queue.
     # This callback will be called from a different thread.
-    def initialize(baseDirectory, metainfo, alertCallback = nil)
+    def initialize(baseDirectory, torrinfo, alertCallback = nil)
       @alertCallback = alertCallback
       @mutex = Mutex.new
       @results = []
@@ -287,11 +293,11 @@ module QuartzTorrent
       @requestsSemaphore = Semaphore.new
       @resultsSemaphore = Semaphore.new
       @baseDirectory = baseDirectory
-      @metainfo = metainfo
-      @pieceIO = PieceIO.new(baseDirectory, metainfo)
+      @torrinfo = torrinfo
+      @pieceIO = PieceIO.new(baseDirectory, torrinfo)
       @requestId = 0
       @logger = LogManager.getLogger("piecemanager")
-      @torrentDataLength = metainfo.info.files.reduce(0){ |memo,f| memo + f.length}
+      @torrentDataLength = torrinfo.files.reduce(0){ |memo,f| memo + f.length}
       startThread
     end
 
@@ -419,11 +425,11 @@ module QuartzTorrent
     end
 
     def findExistingPiecesInternal
-      completePieceBitfield = Bitfield.new(@metainfo.info.pieces.length)
+      completePieceBitfield = Bitfield.new(@torrinfo.pieces.length)
       raise "Base directory #{@baseDirectory} doesn't exist" if ! File.directory?(@baseDirectory)
       raise "Base directory #{@baseDirectory} is not writable" if ! File.writable?(@baseDirectory)
       raise "Base directory #{@baseDirectory} is not readable" if ! File.readable?(@baseDirectory)
-      piecesHashes = @metainfo.info.pieces
+      piecesHashes = @torrinfo.pieces
       index = 0
       piecesHashes.each do |hash|
         @logger.debug "Checking piece #{index+1}/#{piecesHashes.length}"
@@ -450,7 +456,7 @@ module QuartzTorrent
       piece = @pieceIO.readPiece pieceIndex
       if piece
         # Check hash
-        piecesHashes = @metainfo.info.pieces
+        piecesHashes = @torrinfo.pieces
         hash = piecesHashes[pieceIndex]
         calc = Digest::SHA1.digest(piece)
         if calc != hash

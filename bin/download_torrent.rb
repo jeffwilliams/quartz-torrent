@@ -47,7 +47,7 @@ puts "Loading torrent #{torrent}"
 metainfo = Metainfo.createFromFile(torrent)
 peerclient = PeerClient.new(baseDirectory)
 peerclient.port = port
-peerclient.addMetainfo(metainfo)
+peerclient.addTorrentByMetainfo(metainfo)
 
 
 running = true

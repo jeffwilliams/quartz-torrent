@@ -569,7 +569,7 @@ begin
   metainfo = QuartzTorrent::Metainfo.createFromFile(torrent)
   peerclient = QuartzTorrent::PeerClient.new(baseDirectory)
   peerclient.port = port
-  peerclient.addMetainfo(metainfo)
+  peerclient.addTorrentByMetainfo(metainfo)
 
   scrManager.peerClient = peerclient
 

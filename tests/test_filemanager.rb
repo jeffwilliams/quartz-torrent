@@ -7,6 +7,8 @@ require 'quartz_torrent/metainfo.rb'
 require 'quartz_torrent/filemanager.rb'
 require 'quartz_torrent/reactor.rb'
 
+include QuartzTorrent
+
 TestsDir = "tests"
 TestDataDir = "tests/data"
 TestDataTmpDir = "tests/data/tmp"
@@ -35,7 +37,6 @@ class TestFileManager < MiniTest::Unit::TestCase
   end
 
   def testPieceMapper
-    metainfo = QuartzTorrent::Metainfo.new
     info = QuartzTorrent::Metainfo::Info.new
     info.pieceLen = 1024
     info.files = []
@@ -43,8 +44,7 @@ class TestFileManager < MiniTest::Unit::TestCase
     info.files.push QuartzTorrent::Metainfo::FileInfo.new(205, "download/file2")
     info.files.push QuartzTorrent::Metainfo::FileInfo.new(1800, "download/file3")
     info.files.push QuartzTorrent::Metainfo::FileInfo.new(1000, "download/file4")
-    metainfo.info = info
-    mapper = QuartzTorrent::PieceMapper.new("dl", metainfo)
+    mapper = QuartzTorrent::PieceMapper.new("dl", info)
 
     result = mapper.findPiece(0)
     assert_equal 1, result.length
@@ -105,7 +105,7 @@ class TestFileManager < MiniTest::Unit::TestCase
     LogManager.logFile = "stdout"
     LogManager.setLevel "piecemanager", :debug
     metainfo = QuartzTorrent::Metainfo.createFromFile("#{TestDataDir}/testtorrent.torrent")
-    manager = PieceManager.new(TestsDir, metainfo)
+    manager = PieceManager.new(TestsDir, metainfo.info)
     manager.findExistingPieces
     manager.wait
     result = manager.nextResult
@@ -119,7 +119,7 @@ class TestFileManager < MiniTest::Unit::TestCase
     metainfo = QuartzTorrent::Metainfo.createFromFile("#{TestDataDir}/testtorrent.torrent")
     # Use tests/data as the base directory. Since the torrent contains testtorrent/file1 and testtorrent/file2,
     # and tests/data has the testtorrent directory containing those files, the torrent should seem complete.
-    manager = PieceManager.new(TestDataDir, metainfo)
+    manager = PieceManager.new(TestDataDir, metainfo.info)
     id = manager.findExistingPieces
     manager.wait
     result = manager.nextResult
@@ -135,14 +135,14 @@ class TestFileManager < MiniTest::Unit::TestCase
     LogManager.setLevel "piecemapper", :debug
     metainfo = QuartzTorrent::Metainfo.createFromFile("#{TestDataDir}/testtorrent.torrent")
 
-    completeManager = PieceManager.new(TestDataDir, metainfo)
+    completeManager = PieceManager.new(TestDataDir, metainfo.info)
 
     incompleteDir = TestDataTmpDir + File::SEPARATOR + "testtorrent"
     if File.exists? incompleteDir
       puts "Removing directory #{incompleteDir}"
       FileUtils.rm_r incompleteDir
     end
-    incompleteManager = PieceManager.new(TestDataTmpDir, metainfo)
+    incompleteManager = PieceManager.new(TestDataTmpDir, metainfo.info)
 
     # Starting with a complete torrent and an empty torrent, read blocks from the complete and write them to the 
     # empty until the empty is complete. Then load it and confirm it is complete.
@@ -169,7 +169,7 @@ class TestFileManager < MiniTest::Unit::TestCase
 
     puts "Checking copied data "
 
-    manager = PieceManager.new(TestDataDir, metainfo)
+    manager = PieceManager.new(TestDataDir, metainfo.info)
     manager.findExistingPieces
     manager.wait
     result = manager.nextResult

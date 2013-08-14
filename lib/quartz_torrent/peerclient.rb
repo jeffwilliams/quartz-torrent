@@ -124,7 +124,7 @@ module QuartzTorrent
     def addTrackerClient(metainfo, trackerclient)
       raise "There is already a tracker registered for torrent #{bytesToHex(metainfo.infoHash)}" if @torrentData.has_key? metainfo.infoHash
       torrentData = TorrentData.new(metainfo, trackerclient)
-      torrentData.pieceManager = QuartzTorrent::PieceManager.new(@baseDirectory, metainfo)
+      torrentData.pieceManager = QuartzTorrent::PieceManager.new(@baseDirectory, metainfo.info)
       @torrentData[metainfo.infoHash] = torrentData
 
       # Check the existing pieces of the torrent.
@@ -953,7 +953,7 @@ module QuartzTorrent
     end
 
     # Add a new torrent to manage.
-    def addMetainfo(metainfo)
+    def addTorrentByMetainfo(metainfo)
       trackerclient = TrackerClient.createFromMetainfo(metainfo, false)
       trackerclient.port = @port
       @handler.addTrackerClient(metainfo, trackerclient)

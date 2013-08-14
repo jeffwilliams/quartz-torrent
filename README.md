@@ -26,6 +26,8 @@ To-Do
     Alternately, a simpler approach could be to begin by queueing 100 requests, and scaling up or back based on the amount
     remaining next iteration.
   - Magnet links support. Implement BEP 10, BEP 9, BEP 5(?)
+    - BEP 9: Extension for Peers to Send Metadata Files
+      - Need to modify filemanager.rb to accept only metadata.info when created instead of full metainfo
   - Allow pausing/unpausing torrents
   - Package library as a gem
   - Implement rate limiting
