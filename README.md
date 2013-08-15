@@ -27,7 +27,9 @@ To-Do
     remaining next iteration.
   - Magnet links support. Implement BEP 10, BEP 9, BEP 5(?)
     - BEP 9: Extension for Peers to Send Metadata Files
-      - Need to modify filemanager.rb to accept only metadata.info when created instead of full metainfo
+
+  - Refactor Metadata.Info into it's own independent class.
+  - Add type checking in public APIs
   - Allow pausing/unpausing torrents
   - Package library as a gem
   - Implement rate limiting

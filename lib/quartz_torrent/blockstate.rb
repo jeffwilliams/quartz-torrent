@@ -44,26 +44,26 @@ module QuartzTorrent
   # This class only supports one block size.
   class BlockState
 
-    # Create a new BlockState. Parameter 'metainfo' should be the metainfo
+    # Create a new BlockState. Parameter 'info' should be the Metainfo.info object
     # for the torrent, 'initialPieceBitfield' should be the already-existing pieces,
     # and 'blockSize' is the size of blocks.
-    def initialize(metainfo, initialPieceBitfield, blockSize = 16384)
+    def initialize(info, initialPieceBitfield, blockSize = 16384)
       raise "Block size cannot be <= 0" if blockSize <= 0
 
       @logger = LogManager.getLogger("blockstate")
   
       @numPieces = initialPieceBitfield.length
-      @pieceSize = metainfo.info.pieceLen
-      @numPieces = metainfo.info.pieces.length
+      @pieceSize = info.pieceLen
+      @numPieces = info.pieces.length
       @blocksPerPiece = (@pieceSize/blockSize + (@pieceSize%blockSize == 0 ? 0 : 1))
       @blockSize = blockSize
       # When calculating the number of blocks, the last piece is likely a partial piece...
       @numBlocks = @blocksPerPiece * (@numPieces-1)
-      lastPieceLen = (metainfo.info.dataLength - (@numPieces-1)*@pieceSize)
+      lastPieceLen = (info.dataLength - (@numPieces-1)*@pieceSize)
       @numBlocks += lastPieceLen / @blockSize
       @numBlocks += 1 if lastPieceLen % @blockSize != 0
-      @lastBlockLength = (metainfo.info.dataLength - (@numBlocks-1)*@blockSize)
-      @totalLength = metainfo.info.dataLength
+      @lastBlockLength = (info.dataLength - (@numBlocks-1)*@blockSize)
+      @totalLength = info.dataLength
 
       raise "Initial piece bitfield is the wrong length" if initialPieceBitfield.length != @numPieces
       raise "Piece size is not divisible by block size" if @pieceSize % blockSize != 0

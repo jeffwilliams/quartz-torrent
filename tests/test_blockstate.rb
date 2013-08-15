@@ -49,7 +49,7 @@ class TestBlockstate < MiniTest::Unit::TestCase
     end
     
     # Blocksize = 16K. 16 blocks per piece.
-    blockstate = BlockState.new(metainfo, initialBits, 16*1024)
+    blockstate = BlockState.new(metainfo.info, initialBits, 16*1024)
 
     # One peer has nothing
     peerNone = Peer.new(nil)
@@ -127,7 +127,7 @@ class TestBlockstate < MiniTest::Unit::TestCase
     end
 
     # Blocksize = 20 bytes. 5 blocks per piece.
-    blockstate = BlockState.new(metainfo, initialBits, 20)
+    blockstate = BlockState.new(metainfo.info, initialBits, 20)
 
     blocks = blockstate.findRequestableBlocks(classifiedPeers, 10)
     assert_equal 6, blocks.size
@@ -197,7 +197,7 @@ class TestBlockstate < MiniTest::Unit::TestCase
     end
 
     # Blocksize = 20 bytes. 5 blocks per piece.
-    blockstate = BlockState.new(metainfo, initialBits, 20)
+    blockstate = BlockState.new(metainfo.info, initialBits, 20)
 
     blocks = blockstate.findRequestableBlocks(classifiedPeers, 10)
     assert_equal 6, blocks.size

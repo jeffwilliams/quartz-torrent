@@ -45,7 +45,7 @@ def waddstrnw(win, str)
 end
 
 def torrentDisplayName(torrent)
-  name = torrent.metainfo.info.name
+  name = torrent.info.name
   name = bytesToHex(infohash) if ! name || name.length == 0
   name
 end
@@ -141,14 +141,14 @@ class SummaryScreen < Screen
     @torrents = @peerClient.torrentData
     @torrents.each do |infohash, torrent|
       name = torrentDisplayName(torrent)
-      #name = torrent.metainfo.info.name
+      #name = torrent.info.name
       #name = bytesToHex(infohash) if ! name || name.length == 0
 
-      pct = torrent.completedBytes.to_f / torrent.metainfo.info.dataLength.to_f * 100.0
+      pct = torrent.completedBytes.to_f / torrent.info.dataLength.to_f * 100.0
       pct = "%.1f%%" % pct
 
       state = torrent.state
-      if state == :running && torrent.completedBytes == torrent.metainfo.info.dataLength
+      if state == :running && torrent.completedBytes == torrent.info.dataLength
         state = "running (completed)"
       else
         state = state.to_s
@@ -156,12 +156,12 @@ class SummaryScreen < Screen
 
       completePieces = 0
       completePieces = torrent.completePieceBitfield.countSet if torrent.completePieceBitfield
-      totalPieces = torrent.metainfo.info.pieces.length
+      totalPieces = torrent.info.pieces.length
 
       display = [name + "\n"]
       display.push summaryLine(
         state, 
-        Formatter.formatSize(torrent.metainfo.info.dataLength),
+        Formatter.formatSize(torrent.info.dataLength),
         Formatter.formatSpeed(torrent.uploadRate),
         Formatter.formatSpeed(torrent.downloadRate),
         completePieces,
@@ -603,7 +603,7 @@ begin
             torrent = scrManager.current.currentTorrent
             if torrent
               detailsScreen = scrManager.get :details
-              detailsScreen.infoHash = torrent.metainfo.infoHash
+              detailsScreen.infoHash = torrent.infoHash
               scrManager.set :details
             end
           end
