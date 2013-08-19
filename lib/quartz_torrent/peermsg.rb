@@ -1,4 +1,5 @@
 require 'quartz_torrent/bitfield.rb'
+require 'bencode'
 module QuartzTorrent
 
   # Represents a bittorrent peer protocol generic request message (not the specific piece request message).
@@ -394,6 +395,104 @@ module QuartzTorrent
     private
     def extendedMsgPayloadLength
       dict.bencode.length
+    end
+  end
+
+  # An Extended Metainfo message. Used to request metadata pieces, or provide responses to those requests.
+  class ExtendedMetaInfo < Extended
+    def initialize
+      super()
+      @extendedMessageId = 0
+      @msgType = nil
+      @piece = nil
+      @totalSize = nil
+      @data = nil
+      @dict = {}
+    end
+
+    attr_accessor :dict
+    # Message type as a symbol. One of :request, :data, or :reject
+    attr_accessor :msgType
+    attr_accessor :piece
+    # This field is only set if the msgType is :piece 
+    attr_accessor :totalSize
+    # This field is only set if the msgType is :piece. It contains the data for the piece.
+    attr_accessor :data
+
+    def unserialize(payload)
+      # Unserialize extended message id
+      super(payload)
+
+      # Rest of the message is a bencoded dictionary.
+      # Piece messages of this class are encoded in an interesting way: the bencoded dictionary
+      # is concatenated with the arbitrary binary data of the piece at the end. To decode this
+      # we need to know the position of when we've finished reading the dictionary. We do this by
+      # using a Parser object from the bencode library which maintains a stream object which happens
+      # to know the current offset of the parsing.
+
+      payload = payload[1,payload.length]
+      parser = BEncode::Parser.new payload
+
+      begin
+        @dict = parser.parse!
+      rescue
+        e = RuntimeError.new("Error bdecoding payload '#{payload}' (payload length = #{payload.length})")
+        e.set_backtrace($!.backtrace)
+        raise e
+      end
+
+      @msgType = @dict['msg_type']
+      raise "Extended Metainfo message contained no 'msg_type' key." if ! @msgType
+      if @msgType == 0
+        @msgType = :request
+      elsif @msgType == 1
+        @msgType = :piece
+      elsif @msgType == 2
+        @msgType = :reject
+      else
+        raise "Unknown message type '#{@msgType}' in Extended Metainfo message"
+      end
+
+      @piece = @dict['piece']
+      raise "Extended Metainfo message contained no 'piece' key." if ! @piece
+      
+      @totalSize = @dict['total_size'] if @msgType == :piece
+
+      # If this is a piece message, read the data after the dictionary.
+      @data = parser.stream.read if @msgType == :piece
+  
+    end
+
+    def serializeTo(io)
+      super(io)
+      updateDictFromProps
+      io.write @dict.bencode
+      raise "Extended metainfo piece messages must have piece data. This one's data was nil" if ! @data && dict['msg_type'] == 1
+      io.write @data if dict['msg_type'] == 1
+    end
+
+    private
+    def extendedMsgPayloadLength
+      updateDictFromProps
+      @dict.bencode.length
+    end
+
+    def updateDictFromProps
+      @dict['msg_type'] = msgTypeSymToVal(@msgType) if ! @dict.has_key?('msg_type') && @msgType
+      @dict['piece'] = @piece if ! @dict.has_key?('piece') 
+      @dict['total_size'] = @data.length if @data
+    end
+
+    def msgTypeSymToVal(sym)
+      if sym == :request
+        0
+      elsif sym == :piece
+        1
+      elsif sym == :reject
+        2
+      else
+        raise "Unknown msg type #{sym}"
+      end
     end
   end
 

@@ -1,12 +1,13 @@
 require 'bencode'
-require 'quartz_torrent/peermsg.rb'
+require 'quartz_torrent/peermsg'
+require 'quartz_torrent/extension'
 
 module QuartzTorrent
   class PeerWireMessageSerializer
     @@classForMessage = nil
 
     def initialize
-      extendedMessageIdToClass = [ExtendedHandshake]
+      @extendedMessageIdToClass = [ExtendedHandshake]
       @logger = LogManager.getLogger("peermsg_serializer")
     end
 
@@ -34,7 +35,7 @@ module QuartzTorrent
     def serializeTo(msg, io)
       if msg.is_a?(Extended)
         # Set the extended message id
-        extendedMsgId = extendedMessageIdToClass.index msg.class
+        extendedMsgId = @extendedMessageIdToClass.index msg.class
         raise "Unsupported extended peer message id #{extendedMsgId}" if ! extendedMsgId
         msg.extendedMessageId = extendedMsgId
       end
@@ -57,7 +58,7 @@ module QuartzTorrent
         if extendedMsgId == 0
           result = ExtendedHandshake
         else
-          result = extendedMessageIdToClass[extendedMsgId]
+          result = @extendedMessageIdToClass[extendedMsgId]
           raise "Unsupported extended peer message id #{extendedMsgId}" if ! result 
         end
 
@@ -72,6 +73,12 @@ module QuartzTorrent
           msg.dict["m"].each do |extName, extId|
             # Update the list here.
             @logger.debug "Peer supports extension #{extName}."
+            clazz = Extension.peerMsgClassForExtensionName(extName)
+            if clazz  
+              @extendedMessageIdToClass[extId] = clazz
+            else
+              @logger.warn "Peer supports extension #{extName}, but I don't know what class to use for that extension."
+            end
           end
         else
           @logger.warn "Peer sent extended handshake without the 'm' key."

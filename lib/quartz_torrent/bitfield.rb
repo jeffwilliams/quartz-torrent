@@ -183,4 +183,102 @@ module QuartzTorrent
       @data
     end
   end
+
+  # A bitfield that is always empty.
+  class EmptyBitfield < Bitfield
+    def initialize
+      @length = 0
+    end
+
+    # Length of the Bitfield in bits.
+    attr_reader :length
+
+    # Length of the Bitfield in bytes.
+    def byteLength
+      0
+    end
+
+    # Set the bit at index 'bit' to 1.
+    def set(bit)
+    end  
+
+    # Clear the bit at index 'bit' to 0.
+    def clear(bit)
+    end  
+    
+    # Returns true if the bit is set, false otherwise.
+    def set?(bit)
+      false
+    end
+
+    # Are all bits in the Bitfield set?
+    def allSet?
+      false
+    end
+
+    # Are all bits in the Bitfield clear?
+    def allClear?
+      true
+    end
+
+    # Set all bits in the field to 1.
+    def setAll
+    end
+
+    # Clear all bits in the field to 0.
+    def clearAll
+    end
+
+    # Calculate the union of this bitfield and the passed bitfield, and 
+    # return the result as a new bitfield. 
+    def union(bitfield)
+      self
+    end
+
+    # Calculate the intersection of this bitfield and the passed bitfield, and 
+    # return the result as a new bitfield. 
+    def intersection(bitfield)
+      self
+    end
+
+    # Update this bitfield to be the intersection of this bitfield and the passed bitfield.
+    def intersection!(bitfield)
+      self
+    end
+
+    # Set the contents of this bitfield to be the same as the passed bitfield. An exception is 
+    # thrown if the passed bitfield is smaller than this.
+    def copyFrom(bitfield)
+    end
+
+    # Calculate the compliment of this bitfield, and 
+    # return the result as a new bitfield. 
+    def compliment
+      self
+    end
+
+    # Update this bitfield to be the compliment of itself.
+    def compliment!
+      self
+    end
+
+    # Serialize this bitfield as a string.
+    def serialize
+      ""
+    end
+
+    # Unserialize this bitfield from a string.
+    def unserialize(s)
+    end
+
+    # Return a display string representing the bitfield.
+    def to_s(groupsOf = 8)
+      "empty"
+    end
+
+    # Count the number of bits that are set. Slow: could use lookup table.
+    def countSet
+      0
+    end
+  end
 end

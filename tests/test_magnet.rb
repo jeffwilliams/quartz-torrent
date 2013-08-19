@@ -2,6 +2,7 @@
 require 'minitest/unit'
 require 'minitest/autorun'
 require 'quartz_torrent/magnet'
+require 'quartz_torrent/metainfo'
 
 include QuartzTorrent
 
@@ -48,6 +49,15 @@ class TestMagnet < MiniTest::Unit::TestCase
     assert_equal "udp://tracker.openbittorrent.com:80", magnet["tr"].first
     assert_equal "udp://tracker.publicbt.com:80", magnet["tr"][1]
 
+  end
+
+  def testEncode
+    metainfo = Metainfo.new
+    metainfo.announce = "http://localhost:80/announce"
+    metainfo.infoHash = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19].pack "C*"
+      
+    assert_equal "magnet:?xt=urn:btih:000102030405060708090a0b0c0d0e0f10111213&tr=http://localhost:80/announce", 
+      MagnetURI.encodeFromMetainfo(metainfo)
   end
 
 end

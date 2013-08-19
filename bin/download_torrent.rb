@@ -28,7 +28,7 @@ LogManager.defaultLevel= :info
 LogManager.setLevel "peer_manager", :info
 LogManager.setLevel "tracker_client", :debug
 LogManager.setLevel "http_tracker_client", :debug
-LogManager.setLevel "peerclient", :debug
+LogManager.setLevel "peerclient", :info
 LogManager.setLevel "peerclient.reactor", :info
 #LogManager.setLevel "peerclient.reactor", :debug
 LogManager.setLevel "blockstate", :info
@@ -44,11 +44,16 @@ if ! torrent
 end
 puts "Loading torrent #{torrent}"
 
-metainfo = Metainfo.createFromFile(torrent)
 peerclient = PeerClient.new(baseDirectory)
 peerclient.port = port
-peerclient.addTorrentByMetainfo(metainfo)
 
+# Check if the torrent is a torrent file or a magnet URI
+if MagnetURI.magnetURI?(torrent)
+  peerclient.addTorrentByMagnetURI MagnetURI.new(torrent)
+else
+  metainfo = Metainfo.createFromFile(torrent)
+  peerclient.addTorrentByMetainfo(metainfo)
+end
 
 running = true
 

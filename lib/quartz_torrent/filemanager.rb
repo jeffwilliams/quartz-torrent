@@ -297,7 +297,7 @@ module QuartzTorrent
       @pieceIO = PieceIO.new(baseDirectory, torrinfo)
       @requestId = 0
       @logger = LogManager.getLogger("piecemanager")
-      @torrentDataLength = torrinfo.files.reduce(0){ |memo,f| memo + f.length}
+      @torrentDataLength = torrinfo.dataLength
       startThread
     end
 
@@ -352,6 +352,14 @@ module QuartzTorrent
       id
     end
 
+    # Flush to disk. The result for this operation is always successful.
+    def flush()
+      id = returnAndIncrRequestId
+      @requests.push [id, :flush]
+      @requestsSemaphore.signal
+      id
+    end
+
     # Result retrieval. Returns the next result, or nil if none are ready.
     # The results that are returned are PieceIOWorker::Result objects. 
     # For readBlock operations the data property of the result object contains
@@ -398,6 +406,9 @@ module QuartzTorrent
             elsif req[1] == :hash_piece
               result = hashPiece req[2]
               result = Result.new(req[0], result, req[2])
+            elsif req[1] == :flush
+              @pieceIO.flush
+              result = true
             end
             result = Result.new(req[0], true, result) if ! result.is_a?(Result)
           rescue

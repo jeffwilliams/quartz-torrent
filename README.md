@@ -27,6 +27,8 @@ To-Do
     remaining next iteration.
   - Magnet links support. Implement BEP 10, BEP 9, BEP 5(?)
     - BEP 9: Extension for Peers to Send Metadata Files
+      - Check hash when completed.
+      - Begin downloading when completed
 
   - Refactor Metadata.Info into it's own independent class.
   - Add type checking in public APIs
@@ -35,6 +37,9 @@ To-Do
   - Implement rate limiting
   - Documentation
   - Help screen in curses downloader
+  - Trackers can return the same peer multiple times (same ip and port). Detect this and remove dups.
+  - Lower log levels currently being used (some warn messages should be info or debug)
+  - In peerclient, prefix messages with torrent infohash
 
 
 Requirements

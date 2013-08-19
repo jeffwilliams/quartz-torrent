@@ -100,6 +100,28 @@ module QuartzTorrent
         result
       end
 
+      # BEncode this info and return the result.
+      def bencode
+        hash = {}
+    
+        raise "Cannot encode Info object with nil pieceLen" if ! @pieceLen
+        raise "Cannot encode Info object with nil name" if ! @name
+        raise "Cannot encode Info object with nil pieces" if ! @pieces
+        raise "Cannot encode Info object with nil files or empty files" if ! @files || @files.empty?
+
+        hash['piece length'] = @pieceLen
+        hash['private'] = @private if @private
+        hash['name'] = @name
+        hash['pieces'] = @pieces.join
+
+        if @files.length > 1
+          hash['files'] = @files.collect{ |file| {'length' => file.length, 'path' => file.path.split(File::SEPARATOR) }  }
+        else
+          hash['length'] = @files.first.length
+        end
+        hash.bencode
+      end
+
       private
       # Parse the pieces of the torrent out of the metainfo.
       def self.parsePieces(p)

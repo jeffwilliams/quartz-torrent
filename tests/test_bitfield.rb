@@ -1,5 +1,4 @@
 #!/usr/bin/env ruby 
-require 'rubygems'
 require 'minitest/unit'
 require 'minitest/autorun'
 require 'quartz_torrent/bitfield'

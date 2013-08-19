@@ -15,13 +15,13 @@ module QuartzTorrent
   # This is Linux specific: system call number for gettid
   SYSCALL_GETTID = 224
 
-  def bytesToHex(v)
+  def bytesToHex(v, addSpaces = nil)
     s = ""
     v.each_byte{ |b|
       hex = b.to_s(16)
       hex = "0" + hex if hex.length == 1
       s << hex
-      s << " "
+      s << " " if addSpaces == :add_spaces
     }
     s
   end

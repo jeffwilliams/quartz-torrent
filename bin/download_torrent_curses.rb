@@ -5,6 +5,7 @@ require "ncurses"
 require 'quartz_torrent'
 require 'quartz_torrent/memprofiler'
 require 'quartz_torrent/formatter'
+require 'quartz_torrent/magnet'
 
 include QuartzTorrent
 
@@ -565,11 +566,16 @@ begin
   scrManager.add :debug, DebugScreen.new(Ncurses::stdscr)
   scrManager.set :summary
 
-  #puts "Loading torrent #{torrent}"
-  metainfo = QuartzTorrent::Metainfo.createFromFile(torrent)
   peerclient = QuartzTorrent::PeerClient.new(baseDirectory)
   peerclient.port = port
-  peerclient.addTorrentByMetainfo(metainfo)
+
+  # Check if the torrent is a torrent file or a magnet URI
+  if MagnetURI.magnetURI?(torrent)
+    peerclient.addTorrentByMagnetURI MagnetURI.new(torrent)
+  else
+    metainfo = Metainfo.createFromFile(torrent)
+    peerclient.addTorrentByMetainfo(metainfo)
+  end
 
   scrManager.peerClient = peerclient
 

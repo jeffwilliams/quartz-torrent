@@ -2,15 +2,21 @@ require 'quartz_torrent/util'
 require 'uri'
 module QuartzTorrent
   class MagnetURI
+    @@regex = /magnet:\?(.*)/
+  
     # Create a new MagnetURI object given a magnet URI string.
     def initialize(str)
       @params = {}
 
-      if str =~ /magnet:\?(.*)/
+      if str =~ @@regex
         parseQuery $1
       else
         raise "Not a magnet URI"
       end
+    end
+
+    def self.magnetURI?(str)
+      str =~ @@regex
     end
 
     # Return the value of the specified key from the magnet URI.
@@ -35,6 +41,24 @@ module QuartzTorrent
         end
       end
       result
+    end
+
+    # Return the first tracker URL found in the magnet link. Returns nil if the magnet has no tracker info.
+    def tracker
+      tr = @params['tr']
+      if tr
+        tr.first
+      else
+        nil
+      end
+    end
+
+    # Create a magnet URI string given the metainfo from a torrent file.
+    def self.encodeFromMetainfo(metainfo)
+      s = "magnet:?xt=urn:btih:"
+      s << metainfo.infoHash.unpack("H*").first
+      s << "&tr="
+      s << metainfo.announce
     end
 
     private
