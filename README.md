@@ -6,7 +6,10 @@ the library works, but is still alpha.
 
 Features:
 ---------
+  - BEP 9:  Extension for Peers to Send Metadata Files 
+  - BEP 10: Extension Protocol 
   - BEP 15: UDP Tracker support
+  - BEP 23: Tracker Returns Compact Peer Lists
 
 To-Do
 -----
