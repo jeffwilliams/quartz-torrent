@@ -5,8 +5,12 @@ require 'quartz_torrent/extension'
 module QuartzTorrent
   class PeerWireMessageSerializer
     @@classForMessage = nil
+    # The mapping of our extended message ids to extensions. This is different than @extendedMessageIdToClass which is 
+    # the mapping of peer message ids to extensions, which is different for every peer.
+    @@classForExtendedMessage = nil
 
     def initialize
+      # extendedMessageIdToClass is the mapping of extended message ids that the peer has sent to extensions.
       @extendedMessageIdToClass = [ExtendedHandshake]
       @logger = LogManager.getLogger("peermsg_serializer")
     end
@@ -36,7 +40,7 @@ module QuartzTorrent
       if msg.is_a?(Extended)
         # Set the extended message id
         extendedMsgId = @extendedMessageIdToClass.index msg.class
-        raise "Unsupported extended peer message id #{extendedMsgId}" if ! extendedMsgId
+        raise "Unsupported extended peer message #{msg.class}" if ! extendedMsgId
         msg.extendedMessageId = extendedMsgId
       end
       msg.serializeTo(io)
@@ -49,6 +53,11 @@ module QuartzTorrent
         @@classForMessage = [Choke, Unchoke, Interested, Uninterested, Have, BitfieldMessage, Request, Piece, Cancel]
         @@classForMessage[20] = Extended
       end
+
+      if @@classForExtendedMessage.nil?
+        @@classForExtendedMessage = []
+        @@classForExtendedMessage[Extension::MetadataExtensionId] = ExtendedMetaInfo
+      end
       
       result = @@classForMessage[id]
       
@@ -58,8 +67,9 @@ module QuartzTorrent
         if extendedMsgId == 0
           result = ExtendedHandshake
         else
-          result = @extendedMessageIdToClass[extendedMsgId]
-          raise "Unsupported extended peer message id #{extendedMsgId}" if ! result 
+          # In this case the extended message number is the one we told our peers to use, not the one the peer told us.
+          result = @@classForExtendedMessage[extendedMsgId]
+          raise "Unsupported extended peer message id '#{extendedMsgId}'" if ! result 
         end
 
       end
@@ -72,12 +82,12 @@ module QuartzTorrent
         if msg.dict && msg.dict["m"]
           msg.dict["m"].each do |extName, extId|
             # Update the list here.
-            @logger.debug "Peer supports extension #{extName}."
             clazz = Extension.peerMsgClassForExtensionName(extName)
             if clazz  
+              @logger.debug "Peer supports extension #{extName} using id '#{extId}'."
               @extendedMessageIdToClass[extId] = clazz
             else
-              @logger.warn "Peer supports extension #{extName}, but I don't know what class to use for that extension."
+              @logger.warn "Peer supports extension #{extName} using id '#{extId}', but I don't know what class to use for that extension."
             end
           end
         else

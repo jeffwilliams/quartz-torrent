@@ -53,6 +53,16 @@ module QuartzTorrent
       end
     end
 
+    # Return the first display name found in the magnet link. Returns nil if the magnet has no display name.
+    def displayName
+      dn = @params['dn']
+      if dn
+        dn.first
+      else
+        nil
+      end
+    end
+
     # Create a magnet URI string given the metainfo from a torrent file.
     def self.encodeFromMetainfo(metainfo)
       s = "magnet:?xt=urn:btih:"

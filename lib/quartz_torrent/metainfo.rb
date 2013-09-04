@@ -77,8 +77,7 @@ module QuartzTorrent
       end
 
       # Create a FileInfo object from a bdecoded structure.
-      def self.createFromBdecode(bdecode)
-        infoDict = bdecode['info']
+      def self.createFromBdecode(infoDict)
         result = Info.new
         result.pieceLen = infoDict['piece length']
         result.private = infoDict['private']
@@ -196,7 +195,7 @@ module QuartzTorrent
       result.encoding = decoded['encoding']
       result.announce = decoded['announce'].strip
       result.announceList = decoded['announce-list']
-      result.info = Info.createFromBdecode(decoded)
+      result.info = Info.createFromBdecode(decoded['info'])
       result.infoHash = Digest::SHA1.digest( decoded['info'].bencode )
     
       result

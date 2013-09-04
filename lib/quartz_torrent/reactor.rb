@@ -61,9 +61,15 @@ module QuartzTorrent
     ### Methods not meant to be overridden
     attr_accessor :reactor
 
+    # Schedule a timer.
     def scheduleTimer(duration, metainfo = nil, recurring = true, immed = false)
       @reactor.scheduleTimer(duration, metainfo, recurring, immed) if @reactor
     end  
+
+    # Cancel a timer scheduled with scheduleTimer.
+    def cancelTimer(timerInfo)
+      @reactor.cancelTimer(timerInfo) if @reactor
+    end
 
     def connect(addr, port, metainfo, timeout = nil)
       @reactor.connect(addr, port, metainfo, timeout) if @reactor
@@ -456,6 +462,11 @@ module QuartzTorrent
       @eventWrite.flush
       timerInfo
     end  
+
+    # Meant to be called from the handler. Cancel the timer scheduled with scheduleTimer
+    def cancelTimer(timerInfo)
+      @timerManager.cancel timerInfo
+    end
 
     # Meant to be called from the handler. Adds the specified data to the outgoing queue for the current io
     def write(data)

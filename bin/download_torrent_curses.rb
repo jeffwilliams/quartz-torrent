@@ -46,7 +46,8 @@ def waddstrnw(win, str)
 end
 
 def torrentDisplayName(torrent)
-  name = torrent.info.name
+  return "Unknown" if ! torrent 
+  name = torrent.recommendedName
   name = bytesToHex(infohash) if ! name || name.length == 0
   name
 end
@@ -127,8 +128,17 @@ class SummaryScreen < Screen
   end
 
   private
-  def summaryLine(state, size, uploadRate, downloadRate, completePieces, totalPieces, progress)
-    "     %12s  %9s  Rate: %6s | %6s  Pieces: %4d/%4d Progress: %5s\n" % [state, size, uploadRate, downloadRate, completePieces, totalPieces, progress]
+  def summaryLine(state, size, uploadRate, downloadRate, complete, total, progress)
+    if state == :downloading_metainfo
+      "     %12s  Rate: %6s | %6s  Bytes: %4d/%4d Progress: %5s\n" % [state, uploadRate, downloadRate, complete, total, progress]
+    else
+      if state == :running && complete == total
+        state = "running (completed)"
+      else
+        state = state.to_s
+      end
+      "     %12s  %9s  Rate: %6s | %6s  Pieces: %4d/%4d Progress: %5s\n" % [state, size, uploadRate, downloadRate, complete, total, progress]
+    end
   end
 
   def drawTorrents
@@ -145,24 +155,37 @@ class SummaryScreen < Screen
       #name = torrent.info.name
       #name = bytesToHex(infohash) if ! name || name.length == 0
 
-      pct = torrent.completedBytes.to_f / torrent.info.dataLength.to_f * 100.0
-      pct = "%.1f%%" % pct
-
-      state = torrent.state
-      if state == :running && torrent.completedBytes == torrent.info.dataLength
-        state = "running (completed)"
-      else
-        state = state.to_s
+      pct = "0%"
+      if torrent.info
+        pct = torrent.completedBytes.to_f / torrent.info.dataLength.to_f * 100.0
+        pct = "%.1f%%" % pct
+      elsif torrent.state == :downloading_metainfo && torrent.metainfoCompletedLength
+        if torrent.metainfoLength
+          pct = torrent.metainfoCompletedLength.to_f / torrent.metainfoLength.to_f * 100.0
+          pct = "%.1f%%" % pct
+        else
+          pct = "?%%"
+        end
       end
 
+      state = torrent.state
+
       completePieces = 0
-      completePieces = torrent.completePieceBitfield.countSet if torrent.completePieceBitfield
-      totalPieces = torrent.info.pieces.length
+      totalPieces = 0
+      dataLength = 0
+      if torrent.state == :downloading_metainfo
+        completePieces = torrent.metainfoCompletedLength if torrent.metainfoCompletedLength
+        totalPieces = torrent.metainfoLength if torrent.metainfoLength
+      else
+        completePieces = torrent.completePieceBitfield.countSet if torrent.completePieceBitfield
+        totalPieces = torrent.info.pieces.length if torrent.info
+        dataLength = torrent.info.dataLength if torrent.info
+      end
 
       display = [name + "\n"]
       display.push summaryLine(
         state, 
-        Formatter.formatSize(torrent.info.dataLength),
+        Formatter.formatSize(dataLength),
         Formatter.formatSpeed(torrent.uploadRate),
         Formatter.formatSpeed(torrent.downloadRate),
         completePieces,

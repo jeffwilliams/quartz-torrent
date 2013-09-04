@@ -60,16 +60,16 @@ class TestMetainfoPieceState < MiniTest::Unit::TestCase
     LogManager.logFile = "stdout"
     LogManager.setLevel "metainfo_piece_state", :debug
 
-    info = "my test info"
-    infoHash = Digest::SHA1.digest( info.bencode )
+    metainfo = QuartzTorrent::Metainfo.createFromFile("#{TestDataDir}/testtorrent.torrent")
+    infoHash = Digest::SHA1.digest( metainfo.info.bencode )
 
     # This metainfo will have one piece
-    state = MetainfoPieceState.new TestDataTmpDir, infoHash, nil, info
+    state = MetainfoPieceState.new TestDataTmpDir, infoHash, nil, metainfo.info
     
     state.readPiece 0
     state.wait
     result = state.checkResults[0]
-    assert_equal info.bencode, result.data
+    assert_equal metainfo.info.bencode, result.data
   end
   
 

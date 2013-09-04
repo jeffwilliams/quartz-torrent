@@ -35,6 +35,7 @@ LogManager.setLevel "blockstate", :info
 LogManager.setLevel "piecemanager", :info
 LogManager.setLevel "peerholder", :debug
 LogManager.setLevel "util", :debug
+LogManager.setLevel "peermsg_serializer", :debug
 
 FileUtils.mkdir baseDirectory if ! File.exists?(baseDirectory)
 
