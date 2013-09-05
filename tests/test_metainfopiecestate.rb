@@ -53,7 +53,6 @@ class TestMetainfoPieceState < MiniTest::Unit::TestCase
     state.wait
     result = state.checkResults[0]
     assert_equal piece2, result.data
-
   end
 
   def testReading
@@ -72,6 +71,25 @@ class TestMetainfoPieceState < MiniTest::Unit::TestCase
     assert_equal metainfo.info.bencode, result.data
   end
   
+  def testAlreadyExists
+    LogManager.logFile = "stdout"
+    LogManager.setLevel "metainfo_piece_state", :debug
+
+    metainfo = QuartzTorrent::Metainfo.createFromFile("#{TestDataDir}/testtorrent.torrent")
+    infoHash = Digest::SHA1.digest( metainfo.info.bencode )
+
+    infoFileName = MetainfoPieceState.generateInfoFileName(infoHash)
+  
+    path = "#{TestDataTmpDir}/#{infoFileName}"
+    FileUtils.rm path if File.exists? path
+
+    File.open(path, "w") do |file|
+      file.write metainfo.info.bencode
+    end
+
+    # Check that if the info file exists, MetainfoPieceState detects that.
+    assert MetainfoPieceState.downloaded TestDataTmpDir, infoHash
+  end
 
 end
 

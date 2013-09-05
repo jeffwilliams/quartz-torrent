@@ -221,11 +221,11 @@ module QuartzTorrent
       @pieceManager.wait
     end
 
-    private
     def self.generateInfoFileName(infoHash)
       "#{bytesToHex(infoHash)}.info"
     end
 
+    private
     # Remove any pending requests after a timeout.
     def removeOldRequests
       now = Time.new
