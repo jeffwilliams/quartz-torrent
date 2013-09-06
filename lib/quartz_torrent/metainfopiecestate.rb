@@ -209,7 +209,7 @@ module QuartzTorrent
       @badPeers.add peer
     end
 
-    # For debugging.
+    # Flush all pieces to disk
     def flush
       id = @pieceManager.flush
       @pieceManagerRequests[id] = PieceManagerRequestMetadata.new(:flush, nil)

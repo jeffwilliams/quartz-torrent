@@ -75,7 +75,48 @@ module QuartzTorrent
 
   # Data about torrents for use by the end user. 
   class TorrentDataDelegate
-    def initialize(torrentData)
+    # Create a new TorrentDataDelegate. This is meant to only be called internally.
+    def initialize(torrentData, peerClientHandler)
+      fillFrom(torrentData)
+      @torrentData = torrentData
+      @peerClientHandler = peerClientHandler
+    end
+
+    # Torrent Metainfo.info struct. This is nil if the torrent has no metadata and we haven't downloaded it yet
+    # (i.e. a magnet link).
+    attr_accessor :info
+    attr_accessor :infoHash
+    # Recommended display name for this torrent.
+    attr_accessor :recommendedName
+    attr_reader :downloadRate
+    attr_reader :uploadRate
+    attr_reader :downloadRateDataOnly
+    attr_reader :uploadRateDataOnly
+    attr_reader :completedBytes
+    attr_reader :peers
+    # State of the torrent. This may be one of :downloading_metainfo, :error, :checking_pieces, :running, :downloading_metainfo, or :deleted.
+    # The :deleted state indicates that the torrent that this TorrentDataDelegate refers to is no longer being managed by the peer client.
+    attr_reader :state
+    attr_reader :completePieceBitfield
+    # Length of metainfo info in bytes. This is only set when the state is :downloading_metainfo
+    attr_reader :metainfoLength
+    # How much of the metainfo info we have downloaded in bytes. This is only set when the state is :downloading_metainfo
+    attr_reader :metainfoCompletedLength
+  
+    # Update the data in this TorrentDataDelegate from the torrentData
+    # object that it was created from. TODO: What if that torrentData is now gone?
+    def refresh
+      @peerClientHandler.updateDelegateTorrentData self
+    end
+
+    # Set the fields of this TorrentDataDelegate from the passed torrentData. 
+    # This is meant to only be called internally.
+    def internalRefresh
+      fillFrom(@torrentData)
+    end
+
+    private
+    def fillFrom(torrentData)
       @infoHash = torrentData.infoHash
       @info = torrentData.info
       @bytesUploaded = torrentData.bytesUploaded
@@ -107,32 +148,13 @@ module QuartzTorrent
       end
     end
 
-    # Torrent Metainfo.info struct. This is nil if the torrent has no metadata and we haven't downloaded it yet
-    # (i.e. a magnet link).
-    attr_accessor :info
-    attr_accessor :infoHash
-    # Recommended display name for this torrent.
-    attr_accessor :recommendedName
-    attr_reader :downloadRate
-    attr_reader :uploadRate
-    attr_reader :downloadRateDataOnly
-    attr_reader :uploadRateDataOnly
-    attr_reader :completedBytes
-    attr_reader :peers
-    attr_reader :state
-    attr_reader :completePieceBitfield
-    # Length of metainfo info in bytes. This is only set when the state is :downloading_metainfo
-    attr_reader :metainfoLength
-    # How much of the metainfo info we have downloaded in bytes. This is only set when the state is :downloading_metainfo
-    attr_reader :metainfoCompletedLength
-  
-    private
     def buildPeersList(torrentData)
       @peers = []
       torrentData.peers.all.each do |peer|
         @peers.push peer.clone
       end
     end
+
   end
 
   # This class implements a Reactor Handler object. This Handler implements the PeerClient.
@@ -210,6 +232,7 @@ module QuartzTorrent
       @reactor.scheduleTimer(0, [:removetorrent, infoHash], false, true)
     end
 
+    # Reactor method called when a peer has connected to us.
     def serverInit(metadata, addr, port)
       # A peer connected to us
       # Read handshake message
@@ -310,6 +333,7 @@ module QuartzTorrent
       setMetaInfo(peer)
     end
 
+    # Reactor method called when we have connected to a peer.
     def clientInit(peer)
       # We connected to a peer
       # Send handshake
@@ -334,6 +358,7 @@ module QuartzTorrent
       sendBitfield(currentIo, torrentData.blockState.completePieceBitfield) if torrentData.blockState
     end
 
+    # Reactor method called when there is data ready to be read from a socket
     def recvData(peer)
       msg = nil
 
@@ -417,6 +442,7 @@ module QuartzTorrent
       end
     end
 
+    # Reactor method called when a scheduled timer expires.
     def timerExpired(metadata)
       if metadata.is_a?(Array) && metadata[0] == :manage_peers
         @logger.info "Managing peers for torrent #{bytesToHex(metadata[1])}"
@@ -451,13 +477,21 @@ module QuartzTorrent
         @torrentData.each do |k,v|
           begin
             if metadata[3].nil? || k == metadata[3]
-              v = TorrentDataDelegate.new(v)
+              v = TorrentDataDelegate.new(v, self)
               metadata[1][k] = v
             end
           rescue
             @logger.error "Error building torrent data response for user: #{$!}"
             @logger.error "#{$!.backtrace.join("\n")}"
           end
+        end
+        metadata[2].signal
+      elsif metadata.is_a?(Array) && metadata[0] == :update_torrent_data
+        delegate = metadata[1]
+        if ! @torrentData.has_key?(infoHash)
+          delegate.state = :deleted 
+        else
+          delegate.internalRefresh
         end
         metadata[2].signal
       elsif metadata.is_a?(Array) && metadata[0] == :request_metadata_pieces
@@ -469,6 +503,7 @@ module QuartzTorrent
       end
     end
 
+    # Reactor method called when an IO error occurs.
     def error(peer, details)
       # If a peer closes the connection during handshake before we determine their id, we don't have a completed
       # Peer object yet. In this case the peer parameter is the symbol :listener_socket
@@ -490,8 +525,18 @@ module QuartzTorrent
     def getDelegateTorrentData(infoHash = nil)
       # Use an immediate, non-recurring timer.
       result = {}
+      return result if stopped?
       semaphore = Semaphore.new
       @reactor.scheduleTimer(0, [:get_torrent_data, result, semaphore, infoHash], false, true)
+      semaphore.wait
+      result
+    end
+
+    def updateDelegateTorrentData(delegate)
+      return if stopped?
+      # Use an immediate, non-recurring timer.
+      semaphore = Semaphore.new
+      @reactor.scheduleTimer(0, [:update_torrent_data, delegate, semaphore], false, true)
       semaphore.wait
       result
     end
@@ -787,14 +832,20 @@ module QuartzTorrent
         end
       end
 
-      if torrentData.metainfoPieceState.complete?
-        @logger.info "Obtained all pieces of metainfo. Will begin checking existing pieces." 
+      if torrentData.metainfoPieceState.complete? && torrentData.state == :downloading_metainfo
+        @logger.info "Obtained all pieces of metainfo. Will begin checking existing pieces."
+        torrentData.metainfoPieceState.flush
         # We don't need to download metainfo anymore.
         cancelTimer torrentData.metainfoRequestTimer if torrentData.metainfoRequestTimer
         info = MetainfoPieceState.downloaded(@baseDirectory, torrentData.infoHash)
-        torrentData.info = info
-        torrentData.pieceManager = QuartzTorrent::PieceManager.new(@baseDirectory, info)
-        startCheckingPieces torrentData
+        if info
+          torrentData.info = info
+          torrentData.pieceManager = QuartzTorrent::PieceManager.new(@baseDirectory, info)
+          startCheckingPieces torrentData
+        else
+          @logger.error "Metadata download is complete but reading the metadata failed"
+          torrentData.state = :error
+        end
       end
     end
 
@@ -1143,7 +1194,7 @@ module QuartzTorrent
         peer.peerMsgSerializer.serializeTo(msg, io)
       rescue
         e = Exception.new "Sending message to peer #{peer} failed: #{$!.message}"
-        e.set_backtrace = e.backtrace
+        e.set_backtrace e.backtrace
         raise e
       end
       msg.serializeTo io
@@ -1167,10 +1218,13 @@ module QuartzTorrent
       @toStart = []
     end
 
+    # Set the port used by the torrent peer client. This only has an effect if start has not yet been called.
     attr_accessor :port
 
     # Start the PeerClient: open the listening port, and start a new thread to begin downloading/uploading pieces.
     def start 
+      return if ! @stopped
+
       @reactor.listen("0.0.0.0",@port,:listener_socket)
 
       @stopped = false
@@ -1187,22 +1241,27 @@ module QuartzTorrent
 
     # Stop the PeerClient. This method may take some time to complete.
     def stop
+      return if @stopped
+
       @logger.info "Stop called. Stopping reactor"
       @reactor.stop
       if @worker
         @logger.info "Worker wait timed out after 10 seconds. Shutting down anyway" if ! @worker.join(10)
       end
+      @stopped = true
     end
 
     # Add a new torrent to manage described by a Metainfo object. This is generally the 
     # method to call if you have a .torrent file.
     def addTorrentByMetainfo(metainfo)
+      raise "addTorrentByMetainfo should be called with a Metainfo object, not #{metainfo.class}" if ! metainfo.is_a?(Metainfo)
       trackerclient = TrackerClient.createFromMetainfo(metainfo, false)
       addTorrent(trackerclient, metainfo.infoHash, metainfo.info)
     end
 
     # Add a new torrent to manage given an announceUrl and an infoHash. 
     def addTorrentWithoutMetainfo(announceUrl, infoHash, magnet = nil)
+      raise "addTorrentWithoutMetainfo should be called with a Magnet object, not a #{magnet.class}" if magnet && ! magnet.is_a?(MagnetURI)
       trackerclient = TrackerClient.create(announceUrl, infoHash, 0, false)
       addTorrent(trackerclient, infoHash, nil, magnet)
     end

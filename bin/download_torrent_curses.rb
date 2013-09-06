@@ -610,6 +610,11 @@ begin
     running = false
   end
 
+  initThread("main")
+  Signal.trap('SIGUSR1') do
+    QuartzTorrent.logBacktraces
+  end
+
   #puts "Starting peer client"
   peerclient.start
 

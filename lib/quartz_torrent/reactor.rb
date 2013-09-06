@@ -91,6 +91,11 @@ module QuartzTorrent
     def stopReactor
       @reactor.stop if @reactor
     end
+  
+    # Check if stop has been called on the reactor 
+    def stopped?
+      @stopped
+    end
 
     # Close the current io
     def close(io = nil)
@@ -376,6 +381,10 @@ module QuartzTorrent
 
     attr_accessor :listenBacklog
 
+    def stopped?
+      @stopped
+    end
+
     # Create a TCP connection to the specified host
     def connect(addr, port, metainfo, timeout = nil)
       ioInfo = startConnection(port, addr, metainfo)
@@ -526,16 +535,18 @@ module QuartzTorrent
     def eventLoopBody
       readset = []
       writeset = []
+      outputBufferNotEmptyCount = 0
       @ioInfo.each do |k,v|
         readset.push k if v.state != :connecting && ! @stopped
         @logger.debug "eventloop: IO metainfo=#{v.metainfo} added to read set" if @logger
         writeset.push k if (!v.outputBuffer.empty? || v.state == :connecting) && v.state != :listening
         @logger.debug "eventloop: IO metainfo=#{v.metainfo} added to write set" if @logger
+        outputBufferNotEmptyCount += 1 if !v.outputBuffer.empty?
       end
       readset.push @eventRead
 
       # Only exit the event loop once we've written all pending data.
-      return :halt if @stopped && writeset.size == 0
+      return :halt if @stopped && outputBufferNotEmptyCount == 0
 
       # 1. Check timers
       selectTimeout = nil
@@ -583,6 +594,10 @@ module QuartzTorrent
         processTimer(timer)
       else
         readable, writeable = selectResult
+  
+        # If we are stopped, then ignore reads; we only care about completing our writes that were pending when we were stopped.
+        readable = [] if @stopped
+
         readable.each do |io|
           # This could be the eventRead pipe, which we use to signal shutdown or to reloop.
           if io == @eventRead
@@ -611,6 +626,7 @@ module QuartzTorrent
             end
           end
         end
+
         writeable.each do |io|
           @currentIoInfo = @ioInfo[io]
           # Check if there is still ioInfo for this io. This can happen if this io was also ready for read, and 
