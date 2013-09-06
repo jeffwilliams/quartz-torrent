@@ -128,12 +128,14 @@ class SummaryScreen < Screen
   end
 
   private
-  def summaryLine(state, size, uploadRate, downloadRate, complete, total, progress)
+  def summaryLine(state, paused, size, uploadRate, downloadRate, complete, total, progress)
     if state == :downloading_metainfo
       "     %12s  Rate: %6s | %6s  Bytes: %4d/%4d Progress: %5s\n" % [state, uploadRate, downloadRate, complete, total, progress]
     else
       if state == :running && complete == total
         state = "running (completed)"
+      elsif state == :running && paused
+        state = "running (paused)"
       else
         state = state.to_s
       end
@@ -184,7 +186,8 @@ class SummaryScreen < Screen
 
       display = [name + "\n"]
       display.push summaryLine(
-        state, 
+        state,
+        torrent.paused,
         Formatter.formatSize(dataLength),
         Formatter.formatSpeed(torrent.uploadRate),
         Formatter.formatSpeed(torrent.downloadRate),
@@ -444,6 +447,26 @@ class LogScreen < Screen
   end
 end
 
+class HelpScreen < Screen
+  def initialize(window)
+    @window = window
+  end
+
+  def draw
+    Ncurses::werase @window
+    Ncurses::wmove(@window, 0,0)
+    waddstrnw @window, "Global Keys:\n\n"
+    waddstrnw @window, "  '?':         Show this help screen\n"
+    waddstrnw @window, "  's':         Show the summary screen\n"
+    waddstrnw @window, "  'd':         Show the memory debug screen\n"
+    waddstrnw @window, "  <CTRL-C>:    Exit\n"
+    waddstrnw @window, "\nSummary Screen Keys:\n\n"
+    waddstrnw @window, "  <UP>,<DOWN>: Change which torrent is currently selected\n"
+    waddstrnw @window, "  <ENTER>:     Show the torrent details screen for the currently selected torrent\n"
+    waddstrnw @window, "  'p':         Pause/Unpause the currently selected torrent\n"
+  end
+end
+
 class ScreenManager
   def initialize
     @screens = {}
@@ -587,6 +610,7 @@ begin
   scrManager.add :details, DetailsScreen.new(Ncurses::stdscr)
   scrManager.add :log, LogScreen.new(Ncurses::stdscr)
   scrManager.add :debug, DebugScreen.new(Ncurses::stdscr)
+  scrManager.add :help, HelpScreen.new(Ncurses::stdscr)
   scrManager.set :summary
 
   peerclient = QuartzTorrent::PeerClient.new(baseDirectory)
@@ -631,6 +655,8 @@ begin
           scrManager.set :summary
         elsif key.chr == 'd'
           scrManager.set :debug
+        elsif key.chr == 'h' || key.chr == '?'
+          scrManager.set :help
         elsif key.chr == "\n"
           # Details
           if scrManager.currentId == :summary
@@ -640,6 +666,12 @@ begin
               detailsScreen.infoHash = torrent.infoHash
               scrManager.set :details
             end
+          end
+        elsif key.chr == "p"
+          # Pause/unpause
+          if scrManager.currentId == :summary
+            torrent = scrManager.current.currentTorrent
+            peerclient.setPaused(torrent.infoHash, !torrent.paused) if torrent
           end
         else
           scrManager.onKey key

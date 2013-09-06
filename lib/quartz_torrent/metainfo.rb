@@ -114,7 +114,10 @@ module QuartzTorrent
         hash['pieces'] = @pieces.join
 
         if @files.length > 1
-          hash['files'] = @files.collect{ |file| {'length' => file.length, 'path' => file.path.split(File::SEPARATOR) }  }
+          # This is a multi-file torrent
+          # When we loaded the torrent, we prepended the 'name' element of the info hash to the path. We need to remove this
+          # name element to end up with the same result.
+          hash['files'] = @files.collect{ |file| {'length' => file.length, 'path' => file.path.split(File::SEPARATOR).drop(1) }  }
         else
           hash['length'] = @files.first.length
         end

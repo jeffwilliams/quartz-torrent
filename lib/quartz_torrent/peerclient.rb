@@ -46,6 +46,7 @@ module QuartzTorrent
       @blockState = nil
       @metainfoPieceState = nil
       @metainfoRequestTimer = nil
+      @paused = false
     end
     # The torrents Metainfo.Info struct. This is nil if the torrent has no metadata and we need to download it
     # (i.e. a magnet link)
@@ -71,6 +72,7 @@ module QuartzTorrent
     # The timer handle for the timer that requests metainfo pieces. This is used to cancel the 
     # timer when the metadata is completely downloaded.
     attr_accessor :metainfoRequestTimer
+    attr_accessor :paused
   end
 
   # Data about torrents for use by the end user. 
@@ -102,6 +104,7 @@ module QuartzTorrent
     attr_reader :metainfoLength
     # How much of the metainfo info we have downloaded in bytes. This is only set when the state is :downloading_metainfo
     attr_reader :metainfoCompletedLength
+    attr_reader :paused
   
     # Update the data in this TorrentDataDelegate from the torrentData
     # object that it was created from. TODO: What if that torrentData is now gone?
@@ -131,6 +134,7 @@ module QuartzTorrent
       @uploadRateDataOnly = @peers.reduce(0){ |memo, peer| memo + peer.downloadRateDataOnly }
       @state = torrentData.state
       @metainfoLength = nil
+      @paused = torrentData.paused
       @metainfoCompletedLength = nil
       if torrentData.metainfoPieceState
         @metainfoLength = torrentData.metainfoPieceState.metainfoLength
@@ -230,6 +234,41 @@ module QuartzTorrent
       # Delete all peers related to this torrent
       # Can't do this right now, since it could be in use by an event handler. Use an immediate, non-recurring timer instead.
       @reactor.scheduleTimer(0, [:removetorrent, infoHash], false, true)
+    end
+
+    # Pause or unpause the specified torrent.
+    def setPaused(infoHash, value)
+      torrentData = @torrentData[infoHash]
+      if ! torrentData
+        @logger.warn "Asked to pause a non-existent torrent #{bytesToHex(infoHash)}"
+        return
+      end
+
+      return if torrentData.paused == value
+
+      if value
+        torrentData.paused = true
+
+        # Disconnect from all peers so we won't reply to any messages.
+        torrentData.peers.all.each do |peer|
+          if peer.state != :disconnected
+            # Close socket 
+            withPeersIo(peer, "when removing torrent") do |io|
+              setPeerDisconnected(peer)
+              close(io)
+            end
+          end
+          torrentData.peers.delete peer
+        end 
+      else
+        torrentData.paused = false
+  
+        # Get our list of peers and start connecting right away
+        # Non-recurring and immediate timer
+        @reactor.scheduleTimer(@managePeersPeriod, [:manage_peers, torrentData.infoHash], false, true)
+      end
+
+
     end
 
     # Reactor method called when a peer has connected to us.
@@ -643,6 +682,9 @@ module QuartzTorrent
         @logger.error "Manage peers: tracker client for torrent #{bytesToHex(infoHash)} not found."
         return
       end
+
+      return if torrentData.paused
+
       trackerclient = torrentData.trackerClient
 
       # Update our internal peer list for this torrent from the tracker client
@@ -699,6 +741,8 @@ module QuartzTorrent
         @logger.error "Request blocks peers: tracker client for torrent #{bytesToHex(infoHash)} not found."
         return
       end
+
+      return if torrentData.paused
 
       classifiedPeers = ClassifiedPeers.new torrentData.peers.all
 
@@ -771,6 +815,8 @@ module QuartzTorrent
         return
       end
       
+      return if torrentData.paused
+
       # We may not have completed the extended handshake with the peer which specifies the torrent size.
       # In this case torrentData.metainfoPieceState is not yet set.
       return if ! torrentData.metainfoPieceState
@@ -1285,6 +1331,11 @@ module QuartzTorrent
       @handler.getDelegateTorrentData(infoHash)
     end
  
+    # Pause or unpause the specified torrent.
+    def setPaused(infoHash, value)
+      @handler.setPaused(infoHash, value)
+    end
+
     private
     # Helper method for adding a torrent.
     def addTorrent(trackerclient, infoHash, info, magnet = nil)

@@ -1,0 +1,62 @@
+#!/usr/bin/env ruby
+require 'getoptlong'
+require 'quartz_torrent'
+
+include QuartzTorrent
+
+def help
+  puts "Usage: #{$0} <torrentfile or infofile>"
+  puts "Output information about the specified .torrent or .info file"
+  puts 
+end
+
+opts = GetoptLong.new(
+  [ '--help', '-h', GetoptLong::NO_ARGUMENT],
+)
+
+opts.each do |opt, arg|
+  if opt == '--help'
+    help
+  end
+end
+
+torrent = ARGV[0]
+if ! torrent
+  help
+  exit 1
+end   
+
+info = nil
+begin
+  metainfo = Metainfo.createFromFile(torrent)
+  puts "Info Hash: #{bytesToHex(metainfo.infoHash)}"
+  puts "Announce: #{metainfo.announce}" if metainfo.announce
+  if metainfo.announceList
+    puts "Announce list: "
+    metainfo.announceList.each { |e| puts "  #{e}" }
+  end
+  puts "Creation date: #{metainfo.creationDate}" if metainfo.creationDate
+  puts "Comment: #{metainfo.comment}" if metainfo.comment
+  puts "Created by: #{metainfo.createdBy}" if metainfo.createdBy
+  puts "Encoding: #{metainfo.encoding}" if metainfo.encoding
+
+  info = metainfo.info
+rescue
+  # Doesn't seem to be a complete .torrent file. Maybe it is just the info part.
+  File.open(torrent, "r") do |file|
+    bencoded = file.read
+    info = Metainfo::Info.createFromBdecode(bencoded.bdecode)
+  end
+end
+
+if info
+  puts "Info:"
+  puts "  Name: #{info.name}" if info.name
+  puts "  Piece Length: #{info.pieceLen}" if info.pieceLen
+  puts "  Size of pieces array: #{info.pieces.size}" if info.pieces
+  puts "  Private: #{info.private}" if info.private
+  puts "  Files (length/path): "
+  info.files.each do |file|
+    puts "    #{file.length} #{file.path}"
+  end
+end
