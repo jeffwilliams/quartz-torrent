@@ -68,6 +68,7 @@ module QuartzTorrent
       raise "Initial piece bitfield is the wrong length" if initialPieceBitfield.length != @numPieces
       raise "Piece size is not divisible by block size" if @pieceSize % blockSize != 0
 
+      @completePieces = initialPieceBitfield
       @completeBlocks = Bitfield.new(@numBlocks)
       blockIndex = 0
       initialPieceBitfield.length.times do |pieceIndex|
@@ -178,9 +179,13 @@ module QuartzTorrent
       @requestedBlocks.clear bi if clearRequested == :clear_requested
       if bool
         @completeBlocks.set bi
-        yield pieceIndex if pieceCompleted?(pieceIndex) && block_given?
+        if allBlocksInPieceCompleted?(pieceIndex)
+          yield pieceIndex if block_given?
+          @completePieces.set pieceIndex
+        end
       else
         @completeBlocks.clear bi
+        @completePieces.clear pieceIndex
       end
     end
 
@@ -198,30 +203,22 @@ module QuartzTorrent
           @completeBlocks.clear blockIndex
         end
       end
+      if bool
+        @completePieces.set pieceIndex
+      else
+        @completePieces.clear pieceIndex
+      end
     end
 
     # Is the specified piece completed (all blocks are downloaded)?
     def pieceCompleted?(pieceIndex)
-      complete = true
-      eachBlockInPiece(pieceIndex) do |blockIndex|
-        if ! @completeBlocks.set?(blockIndex)
-          complete = false
-          break
-        end
-      end 
-
-      complete
+      @completePieces.set? pieceIndex
     end
 
     # Get a bitfield representing the completed pieces.
     def completePieceBitfield
       result = Bitfield.new(@numPieces)
-      result.clearAll
-      @numPieces.times do |pieceIndex|
-        if pieceCompleted?(pieceIndex)
-          result.set(pieceIndex)
-        end
-      end 
+      result.copyFrom(@completePieces)
       result
     end
 
@@ -269,6 +266,18 @@ module QuartzTorrent
         break if blockIndex >= @numBlocks
         yield blockIndex
       end
+    end
+
+    def allBlocksInPieceCompleted?(pieceIndex)
+      complete = true
+      eachBlockInPiece(pieceIndex) do |blockIndex|
+        if ! @completeBlocks.set?(blockIndex)
+          complete = false
+          break
+        end
+      end 
+
+      complete
     end
 
     def blockIndexFromPieceAndOffset(pieceIndex, blockOffset)

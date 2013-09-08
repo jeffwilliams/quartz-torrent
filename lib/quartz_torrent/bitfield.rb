@@ -80,11 +80,8 @@ puts "]"
     
     # Returns true if the bit is set, false otherwise.
     def set?(bit)
-      quotient = bit >> 3
-      remainder = bit & 0x7
-    
-      raise "Bit #{bit} out of range of bitfield with length #{length}" if quotient >= @data.length
-      (@data[quotient] << remainder) & 0x80 > 0
+      #raise "Bit #{bit} out of range of bitfield with length #{length}" if quotient >= @data.length
+      (@data[bit >> 3] << (bit & 0x7)) & 0x80 > 0
     end
 
     # Are all bits in the Bitfield set?
