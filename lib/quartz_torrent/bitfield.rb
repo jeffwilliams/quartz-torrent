@@ -1,6 +1,44 @@
 module QuartzTorrent
+
   # A bitfield that allows querying and setting individual bits, as well as serializing and unserializing.
   class Bitfield
+=begin
+    # Code used to generate lookup table:
+print "["
+256.times do |i|
+  # count bits set
+  o = i
+  c = 0
+  8.times do
+    c += 1 if i & 1 > 0
+    i >>= 1
+  end
+
+  print "," if o > 0
+  puts if o > 0 && o % 20 == 0
+  print "#{c}"
+end
+puts "]"
+
+=end
+
+    # Lookup table. The value at index i is the number of bits on in byte with value i.
+    @@bitsSetInByteLookup = 
+      [0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,1,2,2,3,
+      2,3,3,4,2,3,3,4,3,4,4,5,1,2,2,3,2,3,3,4,
+      2,3,3,4,3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,
+      4,5,5,6,1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,
+      2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,2,3,3,4,
+      3,4,4,5,3,4,4,5,4,5,5,6,3,4,4,5,4,5,5,6,
+      4,5,5,6,5,6,6,7,1,2,2,3,2,3,3,4,2,3,3,4,
+      3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,
+      2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,3,4,4,5,
+      4,5,5,6,4,5,5,6,5,6,6,7,2,3,3,4,3,4,4,5,
+      3,4,4,5,4,5,5,6,3,4,4,5,4,5,5,6,4,5,5,6,
+      5,6,6,7,3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,
+      4,5,5,6,5,6,6,7,5,6,6,7,6,7,7,8]
+
+
     # Create a bitfield of length 'length' in bits.
     def initialize(length)
       @length = length
@@ -44,10 +82,9 @@ module QuartzTorrent
     def set?(bit)
       quotient = bit >> 3
       remainder = bit & 0x7
-      mask = 0x80 >> remainder
     
       raise "Bit #{bit} out of range of bitfield with length #{length}" if quotient >= @data.length
-      @data[quotient] & mask > 0
+      (@data[quotient] << remainder) & 0x80 > 0
     end
 
     # Are all bits in the Bitfield set?
@@ -169,13 +206,9 @@ module QuartzTorrent
       s
     end
 
-    # Count the number of bits that are set. Slow: could use lookup table.
+    # Count the number of bits that are set. 
     def countSet
-      count = 0
-      length.times do |i|
-        count += 1 if set?(i)
-      end
-      count
+      @data.reduce(0){ |memo, v| memo + @@bitsSetInByteLookup[v] }
     end
 
     protected

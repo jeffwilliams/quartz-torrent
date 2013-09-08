@@ -438,7 +438,7 @@ module QuartzTorrent
           @logger.error $!.backtrace.join "\n" if @logger
         end
       end
-    
+
       # Event loop finished
       @ioInfo.each do |k,v|
         k.close

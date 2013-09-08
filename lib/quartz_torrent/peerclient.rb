@@ -136,7 +136,7 @@ module QuartzTorrent
       @metainfoLength = nil
       @paused = torrentData.paused
       @metainfoCompletedLength = nil
-      if torrentData.metainfoPieceState
+      if torrentData.metainfoPieceState && torrentData.state == :downloading_metainfo
         @metainfoLength = torrentData.metainfoPieceState.metainfoLength
         @metainfoCompletedLength = torrentData.metainfoPieceState.metainfoCompletedLength
       end
@@ -1192,9 +1192,8 @@ module QuartzTorrent
     end
 
     def sendBitfield(io, bitfield)
-      set = bitfield.countSet
-      if set > 0
-        @logger.info "Sending bitfield with #{set} bits set of size #{bitfield.length}."
+      if ! bitfield.allClear?
+        @logger.info "Sending bitfield of size #{bitfield.length}."
         msg = BitfieldMessage.new
         msg.bitfield = bitfield
         msg.serializeTo io
@@ -1276,12 +1275,17 @@ module QuartzTorrent
       @stopped = false
       @worker = Thread.new do
         initThread("peerclient")
-        @toStart.each{ |trackerclient| trackerclient.start }
-        @reactor.start 
-        @logger.info "Reactor stopped."
-        @handler.torrentData.each do |k,v|
-          v.trackerClient.stop
-        end 
+        begin
+          @toStart.each{ |trackerclient| trackerclient.start }
+          @reactor.start 
+          @logger.info "Reactor stopped."
+          @handler.torrentData.each do |k,v|
+            v.trackerClient.stop
+          end 
+        rescue
+          @logger.error "Unexpected exception in worker thread: #{$!}"
+          @logger.error $!.backtrace.join("\n")
+        end
       end
     end
 

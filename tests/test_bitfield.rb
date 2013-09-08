@@ -205,6 +205,51 @@ class TestBitfield < MiniTest::Unit::TestCase
     assert bf1.set?(11)
 
   end
+
+  def testCountSet
+    bf = QuartzTorrent::Bitfield.new(8)
+ 
+    256.times do |i|
+      bf.clearAll
+  
+      count = 0
+
+      if i & 0x1
+        bf.set 0
+        count+=1 
+      end
+      if i & 0x2
+        bf.set 1 
+        count+=1 
+      end
+      if i & 0x4
+        bf.set 2 
+        count+=1 
+      end
+      if i & 0x8
+        bf.set 3 
+        count+=1 
+      end
+      if i & 0x10
+        bf.set 4 
+        count+=1 
+      end
+      if i & 0x20
+        bf.set 5 
+        count+=1 
+      end
+      if i & 0x40
+        bf.set 6 
+        count+=1 
+      end
+      if i & 0x80
+        bf.set 7 
+        count+=1 
+      end
+
+      assert_equal count, bf.countSet
+    end
+  end
 end
 
 

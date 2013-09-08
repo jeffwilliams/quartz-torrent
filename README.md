@@ -37,9 +37,15 @@ And a specific test case in a test using:
 
 To-Do
 -----
-
-  - Allow pausing/unpausing torrents
+  - Implement rate limiting
+    - Implement RateLimit class. methods: avail, take(thismuch)
+    - Extend the Reactor so that it can support rate limiting. Associate a RateLimit with each io. When reading, if there is 
+      not enough bandwidth, read the amount allowed and yield. When writing, only write the amount allowed. All IO that are for 
+      the same torrent share the same RateLimit.
+  - Improve CPU usage. 
+    - BlockState.pieceCompleted? and completePieceBitfield use a lot of CPU. Keep track of completed pieces in tandem instead of computing.
   - Implement endgame strategy and support Cancel messages.
+  - Change method naming scheme to snake case from camel case.
   - Currently when we request blocks we request a fixed amount from the first peer returned from the findRequestableBlocks
     call. We should spread the requests out to other peers as well if we have saturated the first peer's connection.
     We could tell by the peer's upload rate: upload_rate/(block_size/request_blocks_period) is the ratio of peer's measured
@@ -53,12 +59,8 @@ To-Do
     Alternately, a simpler approach could be to begin by queueing 100 requests, and scaling up or back based on the amount
     remaining next iteration.
   - Refactor Metadata.Info into it's own independent class.
-  - Implement rate limiting
   - Documentation
-  - Add help screen in curses downloader
   - Lower log levels currently being used (some warn messages should be info or debug)
   - In peerclient, prefix log messages with torrent infohash
-  - Examine CPU usage. When downloading a torrent had completed a few hours in the past, curses downloader 
-    was using a lot of CPU. 
   - Implement uTP
 

@@ -7,6 +7,11 @@ require 'quartz_torrent/memprofiler'
 require 'quartz_torrent/formatter'
 require 'quartz_torrent/magnet'
 
+# Set this to true to profile using ruby-prof.
+$doProfiling = false
+
+require 'ruby-prof' if $doProfiling
+
 include QuartzTorrent
 
 DebugTty = "/dev/pts/8"
@@ -101,7 +106,7 @@ class SummaryScreen < Screen
     Ncurses::wmove(@window, 0,0)
     ColorScheme.apply(ColorScheme::HeadingColorPair)
     Ncurses.attron(Ncurses::A_BOLD)
-    waddstrnw @window, "=== QuartzTorrent Downloader  [#{Time.new}] ===\n\n"
+    waddstrnw @window, "=== QuartzTorrent Downloader  [#{Time.new}] #{$doProfiling ? "PROFILING":""} ===\n\n"
     Ncurses.attroff(Ncurses::A_BOLD) 
     ColorScheme.apply(ColorScheme::NormalColorPair)
 
@@ -231,7 +236,7 @@ class DetailsScreen < Screen
 
     ColorScheme.apply(ColorScheme::HeadingColorPair)
     Ncurses.attron(Ncurses::A_BOLD)
-    waddstrnw @window, "=== QuartzTorrent Downloader  [#{Time.new}] ===\n\n"
+    waddstrnw @window, "=== QuartzTorrent Downloader  [#{Time.new}] #{$doProfiling ? "PROFILING":""} ===\n\n"
     Ncurses.attroff(Ncurses::A_BOLD) 
     ColorScheme.apply(ColorScheme::NormalColorPair)
 
@@ -639,6 +644,8 @@ begin
     QuartzTorrent.logBacktraces
   end
 
+  RubyProf.start if $doProfiling
+
   #puts "Starting peer client"
   peerclient.start
 
@@ -683,6 +690,18 @@ begin
   end
 
   peerclient.stop
+
+  if $doProfiling
+    result = RubyProf.stop
+    File.open("/tmp/quartz_reactor.prof","w") do |file|
+      file.puts "FLAT PROFILE"
+      printer = RubyProf::FlatPrinter.new(result)
+      printer.print(file)
+      file.puts "GRAPH PROFILE"
+      printer = RubyProf::GraphPrinter.new(result)
+      printer.print(file, {})
+    end
+  end
 
 rescue LoadError
   exception = $!
