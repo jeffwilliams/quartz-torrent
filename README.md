@@ -37,28 +37,11 @@ And a specific test case in a test using:
 
 To-Do
 -----
-  - Implement rate limiting
-    - Implement RateLimit class. methods: avail, take(thismuch)
-    - Extend the Reactor so that it can support rate limiting. Associate a RateLimit with each io. When reading, if there is 
-      not enough bandwidth, read the amount allowed and yield. When writing, only write the amount allowed. All IO that are for 
-      the same torrent share the same RateLimit.
   - Improve CPU usage. 
-    - BlockState.pieceCompleted? and completePieceBitfield use a lot of CPU. Keep track of completed pieces in tandem instead of computing.
   - Implement endgame strategy and support Cancel messages.
   - Change method naming scheme to snake case from camel case.
-  - Currently when we request blocks we request a fixed amount from the first peer returned from the findRequestableBlocks
-    call. We should spread the requests out to other peers as well if we have saturated the first peer's connection.
-    We could tell by the peer's upload rate: upload_rate/(block_size/request_blocks_period) is the ratio of peer's measured
-    upload versus our expected upload based on our requests. If this ratio is 1 we are requesting at the rate that the 
-    peer can upload to us. If it is < 0 we are requesting faster than the peer can provide. We can keep increasing the
-    amount we request from the peer as long as the ratio stays at almost 1. If it drops below a threshold then we should scale
-    back our requesting.
-
-      upload_rate/(block_size/request_blocks_period)
-
-    Alternately, a simpler approach could be to begin by queueing 100 requests, and scaling up or back based on the amount
-    remaining next iteration.
   - Refactor Metadata.Info into it's own independent class.
+  - Update progress when checking existing pieces
   - Documentation
   - Lower log levels currently being used (some warn messages should be info or debug)
   - In peerclient, prefix log messages with torrent infohash

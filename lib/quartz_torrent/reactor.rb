@@ -2,6 +2,7 @@ require 'socket'
 require 'pqueue'
 require 'fiber'
 require 'thread'
+require 'quartz_torrent/ratelimit'
 include Socket::Constants
 
 module QuartzTorrent
@@ -116,6 +117,16 @@ module QuartzTorrent
     def setMetaInfo(metainfo)
       @reactor.setMetaInfo metainfo if @reactor
     end
+
+    # Set the max rate at which the current IO can be read. The parameter should be a RateLimit object.
+    def setReadRateLimit(rateLimit)
+      @reactor.setReadRateLimit rateLimit if @reactor
+    end
+
+    # Set the max rate at which the current IO can be written to. The parameter should be a RateLimit object.
+    def setWriteRateLimit(rateLimit)
+      @reactor.setWriteRateLimit rateLimit if @reactor
+    end
   end
   
   class OutputBuffer
@@ -136,6 +147,10 @@ module QuartzTorrent
       @buffer.length == 0
     end
 
+    def size
+      @buffer.length
+    end
+
     def append(data)
       if ! @seekable
         @buffer << data
@@ -146,11 +161,16 @@ module QuartzTorrent
 
     # Write the contents of the output buffer to the io. This method throws all of the exceptions that write would throw
     # (EAGAIN, EWOULDBLOCK, etc)
-    def flush
+    # If max is specified and this is a non-seekable io, at most that many bytes are written.
+    def flush(max = nil)
       if ! @seekable
-        while @buffer.length > 0
-          numWritten = @io.write_nonblock(@buffer)
+        toWrite = @buffer.length
+        toWrite = max if max && max < @buffer.length
+        numWritten = 0
+        while toWrite > 0
+          numWritten = @io.write_nonblock(@buffer[0,toWrite])
           @buffer = @buffer[numWritten,@buffer.length]
+          toWrite -= numWritten
         end
       else
         while @buffer.length > 0
@@ -183,8 +203,20 @@ module QuartzTorrent
       data = ''
       while data.length < length
         begin
-          @logger.debug "IoFacade: must read: #{length} have read: #{data.length}. Reading #{length-data.length} bytes now" if @logger
-          data << @io.read_nonblock(length-data.length)
+          toRead = length-data.length
+          rateLimited = false
+          if @ioInfo.readRateLimit
+            avail = @ioInfo.readRateLimit.avail.to_i
+            if avail < toRead
+              toRead = avail
+              rateLimited = true
+            end
+            @ioInfo.readRateLimit.withdraw toRead
+          end
+          @logger.debug "IoFacade: must read: #{length} have read: #{data.length}. Reading #{toRead} bytes now" if @logger
+          data << @io.read_nonblock(toRead) if toRead > 0
+          # If we tried to read more than we are allowed to by rate limiting, yield.
+          Fiber.yield if rateLimited
         rescue Errno::EWOULDBLOCK
           # Wait for more data.
           @logger.debug "IoFacade: read would block" if @logger
@@ -239,7 +271,7 @@ module QuartzTorrent
     end
   end
 
-  # An IO and associated information used by the Reactor.
+  # An IO and associated meta-information used by the Reactor.
   class IOInfo
     def initialize(io, metainfo, seekable = false)
       @io = io
@@ -251,6 +283,8 @@ module QuartzTorrent
       @seekable = seekable
       @outputBuffer = OutputBuffer.new(@io, seekable)
       @useErrorhandler = true
+      @readRateLimit = nil
+      @writeRateLimit = nil
     end
     attr_accessor :io
     attr_accessor :metainfo
@@ -262,6 +296,8 @@ module QuartzTorrent
     attr_accessor :readFiberIoFacade
     attr_accessor :connectTimer
     attr_accessor :useErrorhandler
+    attr_accessor :readRateLimit
+    attr_accessor :writeRateLimit
     def seekable?
       @seekable
     end
@@ -516,6 +552,16 @@ module QuartzTorrent
       @currentIoInfo.metainfo = metainfo
     end
 
+    # Meant to be called from the handler. Sets the max rate at which the current io can read.
+    def setReadRateLimit(rateLimit)
+      @currentIoInfo.readRateLimit = rateLimit
+    end
+
+    # Meant to be called from the handler. Sets the max rate at which the current io can be written to.
+    def setWriteRateLimit(rateLimit)
+      @currentIoInfo.writeRateLimit = rateLimit
+    end
+
     def findIoByMetainfo(metainfo)
       @ioInfo.each_value do |info|
         if info.metainfo == metainfo
@@ -533,13 +579,16 @@ module QuartzTorrent
 
     # Returns :continue or :halt to the caller, specifying whether to continue the event loop or halt.
     def eventLoopBody
+      # 1. Check timers
+      timer, selectTimeout = processTimers
+
       readset = []
       writeset = []
       outputBufferNotEmptyCount = 0
       @ioInfo.each do |k,v|
-        readset.push k if v.state != :connecting && ! @stopped
+        readset.push k if v.state != :connecting && ! @stopped && (v.readRateLimit.nil? || v.readRateLimit.avail >= 1.0)
         @logger.debug "eventloop: IO metainfo=#{v.metainfo} added to read set" if @logger
-        writeset.push k if (!v.outputBuffer.empty? || v.state == :connecting) && v.state != :listening
+        writeset.push k if (!v.outputBuffer.empty? || v.state == :connecting) && v.state != :listening && (v.writeRateLimit.nil? || v.writeRateLimit.avail >= 1.0)
         @logger.debug "eventloop: IO metainfo=#{v.metainfo} added to write set" if @logger
         outputBufferNotEmptyCount += 1 if !v.outputBuffer.empty?
       end
@@ -547,21 +596,6 @@ module QuartzTorrent
 
       # Only exit the event loop once we've written all pending data.
       return :halt if @stopped && outputBufferNotEmptyCount == 0
-
-      # 1. Check timers
-      selectTimeout = nil
-      timer = nil
-      while true && ! @stopped
-        timer = @timerManager.peek
-        break if ! timer
-        secondsUntilExpiry = timer.secondsUntilExpiry
-        if secondsUntilExpiry > 0
-          selectTimeout = secondsUntilExpiry
-          break
-        end
-        # Process timer now; it's firing time has already passed.
-        processTimer(timer)
-      end
 
       # 2. Check user events
       @userEvents.each{ |event| @handler.userEvent event } if ! @stopped
@@ -591,7 +625,7 @@ module QuartzTorrent
         # Calling processTimer in withReadFiber here is not correct. What if at this point the fiber was already paused in a read, and we
         # want to process a timer? In that case we will resume the read and it will possibly finish, but we'll never 
         # call the timer handler. For this reason we must prevent read calls in timerHandlers.
-        processTimer(timer)
+        processTimer(timer) if timer
       else
         readable, writeable = selectResult
   
@@ -643,6 +677,23 @@ module QuartzTorrent
       end
 
       :continue
+    end
+
+    def processTimers
+      selectTimeout = nil
+      timer = nil
+      while true && ! @stopped
+        timer = @timerManager.peek
+        break if ! timer
+        secondsUntilExpiry = timer.secondsUntilExpiry
+        if secondsUntilExpiry > 0
+          selectTimeout = secondsUntilExpiry
+          break
+        end
+        # Process timer now; it's firing time has already passed.
+        processTimer(timer)
+      end
+      [timer, selectTimeout]
     end
 
     def startConnection(port, addr, metainfo)
@@ -801,7 +852,20 @@ module QuartzTorrent
     def writeOutputBuffer(ioInfo)
       begin
         @logger.debug "writeOutputBuffer: flushing data" if @logger
-        ioInfo.outputBuffer.flush
+        if !ioInfo.writeRateLimit
+          ioInfo.outputBuffer.flush
+        else
+          avail = ioInfo.writeRateLimit.avail
+          if avail < ioInfo.outputBuffer.size
+            if avail > 0
+              ioInfo.writeRateLimit.withdraw avail
+              ioInfo.outputBuffer.flush avail 
+            end
+          else
+            ioInfo.writeRateLimit.withdraw ioInfo.outputBuffer.size
+            ioInfo.outputBuffer.flush
+          end
+        end
       rescue Errno::EWOULDBLOCK, Errno::EAGAIN, Errno::EINTR
         # Need to wait to write more.
         @logger.debug "writeOutputBuffer: write failed with retryable exception #{$!}" if @logger

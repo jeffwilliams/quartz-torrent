@@ -580,15 +580,20 @@ end
 #### MAIN
 
 exception = nil
+cursesInitialized = false
 begin
 
   baseDirectory = "tmp"
   port = 9997
+  uploadLimit = nil
+  downloadLimit = nil
   logfile = "/tmp/download_torrent_curses.log"
 
   opts = GetoptLong.new(
     [ '--basedir', '-d', GetoptLong::REQUIRED_ARGUMENT],
     [ '--port', '-p', GetoptLong::REQUIRED_ARGUMENT],
+    [ '--upload-limit', '-u', GetoptLong::REQUIRED_ARGUMENT],
+    [ '--download-limit', '-n', GetoptLong::REQUIRED_ARGUMENT],
   )
 
   opts.each do |opt, arg|
@@ -596,6 +601,10 @@ begin
       baseDirectory = arg
     elsif opt == '--port'
       port = arg.to_i
+    elsif opt == '--download-limit'
+      downloadLimit = arg.to_i
+    elsif opt == '--upload-limit'
+      uploadLimit = arg.to_i
     end
   end
 
@@ -606,6 +615,7 @@ begin
   end   
 
   initializeCurses
+  cursesInitialized = true
   initializeLogging(logfile)
 
   sumScr = SummaryScreen.new(Ncurses::stdscr)
@@ -622,12 +632,15 @@ begin
   peerclient.port = port
 
   # Check if the torrent is a torrent file or a magnet URI
+  infoHash = nil
   if MagnetURI.magnetURI?(torrent)
-    peerclient.addTorrentByMagnetURI MagnetURI.new(torrent)
+    infoHash = peerclient.addTorrentByMagnetURI MagnetURI.new(torrent)
   else
     metainfo = Metainfo.createFromFile(torrent)
-    peerclient.addTorrentByMetainfo(metainfo)
+    infoHash = peerclient.addTorrentByMetainfo(metainfo)
   end
+  peerclient.setDownloadRateLimit infoHash, downloadLimit
+  peerclient.setUploadRateLimit infoHash, uploadLimit
 
   scrManager.peerClient = peerclient
 
@@ -710,7 +723,7 @@ rescue
 end
 
 # Restore previous screen
-Ncurses.endwin
+Ncurses.endwin if cursesInitialized
 
 raise exception if exception
 

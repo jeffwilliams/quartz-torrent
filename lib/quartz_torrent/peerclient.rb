@@ -47,6 +47,8 @@ module QuartzTorrent
       @metainfoPieceState = nil
       @metainfoRequestTimer = nil
       @paused = false
+      @downRateLimit = nil
+      @upRateLimit = nil
     end
     # The torrents Metainfo.Info struct. This is nil if the torrent has no metadata and we need to download it
     # (i.e. a magnet link)
@@ -73,6 +75,10 @@ module QuartzTorrent
     # timer when the metadata is completely downloaded.
     attr_accessor :metainfoRequestTimer
     attr_accessor :paused
+    # The RateLimit for downloading this torrent.
+    attr_accessor :downRateLimit
+    # The RateLimit for uploading to peers for this torrent.
+    attr_accessor :upRateLimit
   end
 
   # Data about torrents for use by the end user. 
@@ -267,8 +273,36 @@ module QuartzTorrent
         # Non-recurring and immediate timer
         @reactor.scheduleTimer(@managePeersPeriod, [:manage_peers, torrentData.infoHash], false, true)
       end
+    end
 
+    # Set the download rate limit. Pass nil as the bytesPerSecond to disable the limit.
+    def setDownloadRateLimit(infoHash, bytesPerSecond)
+      torrentData = @torrentData[infoHash]
+      if ! torrentData
+        @logger.warn "Asked to set download rate limit for a non-existent torrent #{bytesToHex(infoHash)}"
+        return
+      end
+      
+      if bytesPerSecond
+        torrentData.downRateLimit = RateLimit.new(bytesPerSecond, 2*bytesPerSecond, 0)
+      else
+        torrentData.downRateLimit = nil
+      end
+    end
 
+    # Set the upload rate limit. Pass nil as the bytesPerSecond to disable the limit.
+    def setUploadRateLimit(infoHash, bytesPerSecond)
+      torrentData = @torrentData[infoHash]
+      if ! torrentData
+        @logger.warn "Asked to set upload rate limit for a non-existent torrent #{bytesToHex(infoHash)}"
+        return
+      end
+      
+      if bytesPerSecond
+        torrentData.upRateLimit = RateLimit.new(bytesPerSecond, 2*bytesPerSecond, 0)
+      else
+        torrentData.upRateLimit = nil
+      end
     end
 
     # Reactor method called when a peer has connected to us.
@@ -370,6 +404,8 @@ module QuartzTorrent
       sendBitfield(currentIo, torrentData.blockState.completePieceBitfield) if torrentData.blockState
 
       setMetaInfo(peer)
+      setReadRateLimit(torrentData.downRateLimit) if torrentData.downRateLimit
+      setWriteRateLimit(torrentData.upRateLimit) if torrentData.upRateLimit
     end
 
     # Reactor method called when we have connected to a peer.
@@ -395,6 +431,9 @@ module QuartzTorrent
 
       # Send bitfield
       sendBitfield(currentIo, torrentData.blockState.completePieceBitfield) if torrentData.blockState
+
+      setReadRateLimit(torrentData.downRateLimit) if torrentData.downRateLimit
+      setWriteRateLimit(torrentData.upRateLimit) if torrentData.upRateLimit
     end
 
     # Reactor method called when there is data ready to be read from a socket
@@ -1303,6 +1342,7 @@ module QuartzTorrent
 
     # Add a new torrent to manage described by a Metainfo object. This is generally the 
     # method to call if you have a .torrent file.
+    # Returns the infoHash of the newly added torrent.
     def addTorrentByMetainfo(metainfo)
       raise "addTorrentByMetainfo should be called with a Metainfo object, not #{metainfo.class}" if ! metainfo.is_a?(Metainfo)
       trackerclient = TrackerClient.createFromMetainfo(metainfo, false)
@@ -1310,6 +1350,7 @@ module QuartzTorrent
     end
 
     # Add a new torrent to manage given an announceUrl and an infoHash. 
+    # Returns the infoHash of the newly added torrent.
     def addTorrentWithoutMetainfo(announceUrl, infoHash, magnet = nil)
       raise "addTorrentWithoutMetainfo should be called with a Magnet object, not a #{magnet.class}" if magnet && ! magnet.is_a?(MagnetURI)
       trackerclient = TrackerClient.create(announceUrl, infoHash, 0, false)
@@ -1318,6 +1359,7 @@ module QuartzTorrent
   
     # Add a new torrent to manage given a MagnetURI object. This is generally the 
     # method to call if you have a magnet link.
+    # Returns the infoHash of the newly added torrent.
     def addTorrentByMagnetURI(magnet)
       raise "addTorrentByMagnetURI should be called with a MagnetURI object, not a #{magnet.class}" if ! magnet.is_a?(MagnetURI)
 
@@ -1338,6 +1380,16 @@ module QuartzTorrent
     # Pause or unpause the specified torrent.
     def setPaused(infoHash, value)
       @handler.setPaused(infoHash, value)
+    end
+
+    # Set the download rate limit in bytes/second.
+    def setDownloadRateLimit(infoHash, bytesPerSecond)
+      @handler.setDownloadRateLimit(infoHash, bytesPerSecond)
+    end
+
+    # Set the upload rate limit in bytes/second.
+    def setUploadRateLimit(infoHash, bytesPerSecond)
+      @handler.setUploadRateLimit(infoHash, bytesPerSecond)
     end
 
     private
@@ -1370,6 +1422,8 @@ module QuartzTorrent
           trackerclient.start 
         end
       end
+
+      torrentData.infoHash
     end   
 
   end
