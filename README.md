@@ -38,12 +38,16 @@ And a specific test case in a test using:
 To-Do
 -----
   - Improve CPU usage. 
+  - Change rate measurement method to exponential weighted moving average
   - Implement endgame strategy and support Cancel messages.
   - Change method naming scheme to snake case from camel case.
   - Refactor Metadata.Info into it's own independent class.
-  - Update progress when checking existing pieces
   - Documentation
+  - Test on Windows
   - Lower log levels currently being used (some warn messages should be info or debug)
-  - In peerclient, prefix log messages with torrent infohash
+  - In peerclient, prefix log messages with torrent infohash, or (truncated) torrent name
   - Implement uTP
+    - <http://www.bittorrent.org/beps/bep_0029.html#packet-sizes>
+    - <https://forum.utorrent.com/viewtopic.php?id=76640>
+    - <https://github.com/bittorrent/libutp>
 

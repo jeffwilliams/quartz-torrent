@@ -608,8 +608,8 @@ begin
     end
   end
 
-  torrent = ARGV[0]
-  if ! torrent
+  torrents = ARGV
+  if torrents.size == 0
     puts "You need to specify a torrent to download."
     exit 1
   end   
@@ -631,16 +631,18 @@ begin
   peerclient = QuartzTorrent::PeerClient.new(baseDirectory)
   peerclient.port = port
 
-  # Check if the torrent is a torrent file or a magnet URI
-  infoHash = nil
-  if MagnetURI.magnetURI?(torrent)
-    infoHash = peerclient.addTorrentByMagnetURI MagnetURI.new(torrent)
-  else
-    metainfo = Metainfo.createFromFile(torrent)
-    infoHash = peerclient.addTorrentByMetainfo(metainfo)
+  torrents.each do |torrent|
+    # Check if the torrent is a torrent file or a magnet URI
+    infoHash = nil
+    if MagnetURI.magnetURI?(torrent)
+      infoHash = peerclient.addTorrentByMagnetURI MagnetURI.new(torrent)
+    else
+      metainfo = Metainfo.createFromFile(torrent)
+      infoHash = peerclient.addTorrentByMetainfo(metainfo)
+    end
+    peerclient.setDownloadRateLimit infoHash, downloadLimit
+    peerclient.setUploadRateLimit infoHash, uploadLimit
   end
-  peerclient.setDownloadRateLimit infoHash, downloadLimit
-  peerclient.setUploadRateLimit infoHash, uploadLimit
 
   scrManager.peerClient = peerclient
 

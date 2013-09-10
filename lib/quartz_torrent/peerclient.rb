@@ -130,7 +130,16 @@ module QuartzTorrent
       @info = torrentData.info
       @bytesUploaded = torrentData.bytesUploaded
       @bytesDownloaded = torrentData.bytesDownloaded
-      @completedBytes = torrentData.blockState.nil? ? 0 : torrentData.blockState.completedLength
+
+      if torrentData.state == :checking_pieces
+        # When checking pieces there is only one request pending with the piece manager.
+        checkExistingRequestId = torrentData.pieceManagerRequestMetadata.keys.first
+        progress = torrentData.pieceManager.progress checkExistingRequestId
+        @completedBytes = progress ? progress * torrentData.info.dataLength / 100 : 0
+      else
+        @completedBytes = torrentData.blockState.nil? ? 0 : torrentData.blockState.completedLength
+      end
+
       # This should really be a copy:
       @completePieceBitfield = torrentData.blockState.nil? ? nil : torrentData.blockState.completePieceBitfield
       buildPeersList(torrentData)
@@ -1045,6 +1054,7 @@ module QuartzTorrent
       while true
         result = torrentData.pieceManager.nextResult
         break if ! result
+
         metaData = torrentData.pieceManagerRequestMetadata.delete(result.requestId)
         if ! metaData
           @logger.error "Can't find metadata for PieceManager request #{result.requestId}"

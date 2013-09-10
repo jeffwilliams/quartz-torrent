@@ -290,6 +290,9 @@ module QuartzTorrent
       @mutex = Mutex.new
       @results = []
       @requests = []
+      # The progress of requests as they are being serviced, keyed by request id.
+      @requestProgress = {}
+      @progressMutex = Mutex.new
       @requestsSemaphore = Semaphore.new
       @resultsSemaphore = Semaphore.new
       @baseDirectory = baseDirectory
@@ -368,7 +371,17 @@ module QuartzTorrent
       result = nil
       @mutex.synchronize do
         result = @results.shift
+        @progressMutex.synchronize{ @requestProgress.delete result.requestId } if result
       end
+      result
+    end
+
+    # Get the progress of the specified request as an integer between 0 and 100.
+    # Currently, only the findExistingPieces operation registers progress; other operations
+    # just return nil for this.
+    def progress(requestId)
+      result = nil
+      @progressMutex.synchronize{ result = @requestProgress[requestId] }
       result
     end
 
@@ -390,39 +403,46 @@ module QuartzTorrent
       @thread = Thread.new do
         initThread("piecemanager")
         while ! @stopped
-          @requestsSemaphore.wait
-
-          result = nil
-          req = @requests.shift
           begin
-            if req[1] == :read_block
-              result = @pieceIO.readBlock req[2], req[3], req[4]
-            elsif req[1] == :write_block
-              @pieceIO.writeBlock req[2], req[3], req[4]
-            elsif req[1] == :read_piece
-              result = @pieceIO.readPiece req[2]
-            elsif req[1] == :find_existing
-              result = findExistingPiecesInternal
-            elsif req[1] == :hash_piece
-              result = hashPiece req[2]
-              result = Result.new(req[0], result, req[2])
-            elsif req[1] == :flush
-              @pieceIO.flush
-              result = true
+            @requestsSemaphore.wait
+
+            result = nil
+            req = @requests.shift
+            @progressMutex.synchronize{ @requestProgress[req[0]] = 0 }
+            begin
+              if req[1] == :read_block
+                result = @pieceIO.readBlock req[2], req[3], req[4]
+              elsif req[1] == :write_block
+                @pieceIO.writeBlock req[2], req[3], req[4]
+              elsif req[1] == :read_piece
+                result = @pieceIO.readPiece req[2]
+              elsif req[1] == :find_existing
+                result = findExistingPiecesInternal(req[0])
+              elsif req[1] == :hash_piece
+                result = hashPiece req[2]
+                result = Result.new(req[0], result, req[2])
+              elsif req[1] == :flush
+                @pieceIO.flush
+                result = true
+              end
+              result = Result.new(req[0], true, result) if ! result.is_a?(Result)
+            rescue
+              @logger.error "Exception when processing request: #{$!}"
+              @logger.error "#{$!.backtrace.join("\n")}"
+              result = Result.new(req[0], false, nil, $!)
             end
-            result = Result.new(req[0], true, result) if ! result.is_a?(Result)
+            @progressMutex.synchronize{ @requestProgress[req[0]] = 100 }
+
+            @mutex.synchronize do
+              @results.push result
+            end
+            @resultsSemaphore.signal
+
+            @alertCallback.call() if @alertCallback
           rescue
-            @logger.error "Exception when processing request: #{$!}"
+            @logger.error "Unexpected exception in PieceManager worker thread: #{$!}"
             @logger.error "#{$!.backtrace.join("\n")}"
-            result = Result.new(req[0], false, nil, $!)
           end
-
-          @mutex.synchronize do
-            @results.push result
-          end
-          @resultsSemaphore.signal
-
-          @alertCallback.call() if @alertCallback
         end
       end
     end
@@ -435,7 +455,7 @@ module QuartzTorrent
       result
     end
 
-    def findExistingPiecesInternal
+    def findExistingPiecesInternal(requestId)
       completePieceBitfield = Bitfield.new(@torrinfo.pieces.length)
       raise "Base directory #{@baseDirectory} doesn't exist" if ! File.directory?(@baseDirectory)
       raise "Base directory #{@baseDirectory} is not writable" if ! File.writable?(@baseDirectory)
@@ -458,6 +478,7 @@ module QuartzTorrent
           @logger.debug "Piece #{index+1}/#{piecesHashes.length} doesn't exist"
         end
         index += 1
+        @progressMutex.synchronize{ @requestProgress[requestId] = (index+1)*100/piecesHashes.length }
       end
       completePieceBitfield
     end
