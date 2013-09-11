@@ -387,7 +387,6 @@ class DebugScreen < Screen
     @profiler.trackClass QuartzTorrent::Cancel
     @profiler.trackClass QuartzTorrent::Peer
     @profiler.trackClass QuartzTorrent::Rate
-    @profiler.trackClass QuartzTorrent::Rate::Sample
     @profiler.trackClass QuartzTorrent::Handler
     @profiler.trackClass QuartzTorrent::OutputBuffer
     @profiler.trackClass QuartzTorrent::IoFacade
