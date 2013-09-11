@@ -1,3 +1,4 @@
+#!/usr/bin/env ruby
 $: << "."
 require 'fileutils'
 require 'getoptlong'
@@ -65,8 +66,10 @@ Signal.trap('SIGINT') do
 end
 
 initThread("main")
-Signal.trap('SIGUSR1') do
-  QuartzTorrent.logBacktraces
+if Signal.list.has_key?('USR1')
+  Signal.trap('SIGUSR1') do
+    QuartzTorrent.logBacktraces
+  end
 end
 
 puts "Starting peer client"

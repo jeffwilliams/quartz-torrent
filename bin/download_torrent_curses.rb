@@ -655,8 +655,10 @@ begin
   end
 
   initThread("main")
-  Signal.trap('SIGUSR1') do
-    QuartzTorrent.logBacktraces
+  if Signal.list.has_key?('USR1')
+    Signal.trap('SIGUSR1') do
+      QuartzTorrent.logBacktraces
+    end
   end
 
   RubyProf.start if $doProfiling
