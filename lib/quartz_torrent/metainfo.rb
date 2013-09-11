@@ -212,7 +212,7 @@ module QuartzTorrent
     # Create a Metainfo object from the named file.
     def self.createFromFile(path)
       result = 
-      File.open(path,"r") do |io|
+      File.open(path,"rb") do |io|
         result = self.createFromIO(io)
       end
       result

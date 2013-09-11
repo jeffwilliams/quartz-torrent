@@ -32,7 +32,7 @@ module QuartzTorrent
       metainfoSize = File.size(path) if ! metainfoSize && completed
 
       if !completed && info 
-        File.open(path, "w") do |file|
+        File.open(path, "wb") do |file|
           bencoded = info.bencode
           metainfoSize = bencoded.length
           file.write bencoded
@@ -83,7 +83,7 @@ module QuartzTorrent
 
       result = nil
       if File.exists?(path)
-        File.open(path, "r") do |file|
+        File.open(path, "rb") do |file|
           bencoded = file.read
           # Sanity check
           testInfoHash = Digest::SHA1.digest( bencoded )

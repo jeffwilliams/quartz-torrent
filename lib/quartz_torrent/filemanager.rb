@@ -126,9 +126,9 @@ module QuartzTorrent
       # If the file exists, open as r+ so it is not truncated.
       # Otherwise open as w+
       if File.exists?(path)
-        io = File.open(path, "r+")
+        io = File.open(path, "rb+")
       else
-        io = File.open(path, "w+")
+        io = File.open(path, "wb+")
       end
       @io[path] = io
       io
