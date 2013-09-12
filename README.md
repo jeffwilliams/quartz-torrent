@@ -37,8 +37,8 @@ And a specific test case in a test using:
 
 To-Do
 -----
+  - Implement upload ratio.
   - Improve CPU usage. 
-  - Change rate measurement method to exponential weighted moving average
   - Implement endgame strategy and support Cancel messages.
   - Change method naming scheme to snake case from camel case.
   - Refactor Metadata.Info into it's own independent class.
