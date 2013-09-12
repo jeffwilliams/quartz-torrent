@@ -576,13 +576,36 @@ def initializeLogging(file)
   LogManager.setLevel "peerholder", :debug
 end
 
+def help
+  puts "Usage: #{$0} [options] <torrent file> [torrent file...]"
+  puts
+  puts "Download torrents using a simple curses UI. One or more torrent files to download should "
+  puts "be passed as arguments."
+  puts 
+  puts "Options:"
+  puts "  --basedir DIR, -d DIR:"
+  puts "      Set the base directory where torrents will be written to. The default is" 
+  puts "      the current directory."
+  puts
+  puts "  --port PORT, -p PORT:"
+  puts"       Port to listen on for incoming peer connections. Default is 9997"
+  puts
+  puts "  --upload-limit N, -u N:"
+  puts "      Limit upload speed for each torrent to the specified rate in bytes per second. "
+  puts "      The default is no limit."
+  puts
+  puts "  --download-limit N, -d N:"
+  puts "      Limit upload speed for each torrent to the specified rate in bytes per second. "
+  puts "      The default is no limit."
+end
+
 #### MAIN
 
 exception = nil
 cursesInitialized = false
 begin
 
-  baseDirectory = "tmp"
+  baseDirectory = "."
   port = 9997
   uploadLimit = nil
   downloadLimit = nil
@@ -593,6 +616,7 @@ begin
     [ '--port', '-p', GetoptLong::REQUIRED_ARGUMENT],
     [ '--upload-limit', '-u', GetoptLong::REQUIRED_ARGUMENT],
     [ '--download-limit', '-n', GetoptLong::REQUIRED_ARGUMENT],
+    [ '--help', '-h', GetoptLong::NO_ARGUMENT],
   )
 
   opts.each do |opt, arg|
@@ -604,6 +628,9 @@ begin
       downloadLimit = arg.to_i
     elsif opt == '--upload-limit'
       uploadLimit = arg.to_i
+    elsif opt == '--help'
+      help
+      exit 0
     end
   end
 
