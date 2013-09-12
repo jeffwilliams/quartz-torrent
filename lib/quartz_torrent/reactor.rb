@@ -395,7 +395,8 @@ module QuartzTorrent
       attr_accessor :type
       attr_accessor :data
     end
-  
+ 
+    # Create a new reactor that uses the passed hander. 
     def initialize(handler, logger = nil)
       raise "Reactor.new called with nil handler. Handler can't be nil" if handler.nil?
 
@@ -417,6 +418,7 @@ module QuartzTorrent
 
     attr_accessor :listenBacklog
 
+    # Returns true if the reactor is stopped
     def stopped?
       @stopped
     end
@@ -562,6 +564,8 @@ module QuartzTorrent
       @currentIoInfo.writeRateLimit = rateLimit
     end
 
+    # Meant to be called from the handler. Find an IO by metainfo. The == operator is used to 
+    # match the metainfo.
     def findIoByMetainfo(metainfo)
       @ioInfo.each_value do |info|
         if info.metainfo == metainfo
