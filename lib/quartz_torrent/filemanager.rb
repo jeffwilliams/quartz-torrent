@@ -406,6 +406,10 @@ module QuartzTorrent
           begin
             @requestsSemaphore.wait
 
+            if @requests.size > 1000
+              @logger.warn "Request queue has grown past 1000 entries; we are io bound"
+            end
+
             result = nil
             req = @requests.shift
             @progressMutex.synchronize{ @requestProgress[req[0]] = 0 }

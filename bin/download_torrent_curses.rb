@@ -137,13 +137,14 @@ class SummaryScreen < Screen
     if state == :downloading_metainfo
       "     %12s  Rate: %6s | %6s  Bytes: %4d/%4d Progress: %5s\n" % [state, uploadRate, downloadRate, complete, total, progress]
     else
+      primaryState = state.to_s
+      secondaryState = ""
       if state == :running && complete == total
-        state = "running (completed)"
-      elsif state == :running && paused
-        state = "running (paused)"
-      else
-        state = state.to_s
+        secondaryState = "(completed)"
+      elsif (state == :running || state == :uploading) && paused
+        secondaryState = "(paused)"
       end
+      state = "#{primaryState} #{secondaryState}"
       "     %12s  %9s  Rate: %6s | %6s  Pieces: %4d/%4d Progress: %5s\n" % [state, size, uploadRate, downloadRate, complete, total, progress]
     end
   end
@@ -609,6 +610,7 @@ begin
   port = 9997
   uploadLimit = nil
   downloadLimit = nil
+  uploadRatio = nil
   logfile = "/tmp/download_torrent_curses.log"
 
   opts = GetoptLong.new(
@@ -617,6 +619,7 @@ begin
     [ '--upload-limit', '-u', GetoptLong::REQUIRED_ARGUMENT],
     [ '--download-limit', '-n', GetoptLong::REQUIRED_ARGUMENT],
     [ '--help', '-h', GetoptLong::NO_ARGUMENT],
+    [ '--ratio', '-r', GetoptLong::REQUIRED_ARGUMENT],
   )
 
   opts.each do |opt, arg|
@@ -631,6 +634,8 @@ begin
     elsif opt == '--help'
       help
       exit 0
+    elsif opt == '--ratio'
+      uploadRatio = arg.to_f
     end
   end
 
@@ -668,6 +673,7 @@ begin
     end
     peerclient.setDownloadRateLimit infoHash, downloadLimit
     peerclient.setUploadRateLimit infoHash, uploadLimit
+    peerclient.setUploadRatio infoHash, uploadRatio
   end
 
   scrManager.peerClient = peerclient

@@ -27,6 +27,9 @@ module QuartzTorrent
           $3.to_i << 8 +
           $4.to_i +
           port << 32
+
+        @displayId = nil
+        @displayId = id.gsub(/[\x80-\xff]/,'?') if id
       else
         raise "Invalid IP address #{ip}"
       end
@@ -46,7 +49,7 @@ module QuartzTorrent
     attr_accessor :id
 
     def to_s
-      "#{id ? "["+id+"] " : ""}#{ip}:#{port}"
+      "#{@displayId ? "["+@displayId+"] " : ""}#{ip}:#{port}"
     end
   end
 

@@ -49,6 +49,7 @@ module QuartzTorrent
       @paused = false
       @downRateLimit = nil
       @upRateLimit = nil
+      @ratio = nil
     end
     # The torrents Metainfo.Info struct. This is nil if the torrent has no metadata and we need to download it
     # (i.e. a magnet link)
@@ -79,6 +80,9 @@ module QuartzTorrent
     attr_accessor :downRateLimit
     # The RateLimit for uploading to peers for this torrent.
     attr_accessor :upRateLimit
+    # After we have completed downloading a torrent, we will continue to upload until we have 
+    # uploaded ratio * torrent_size bytes. If nil, no limit on upload.
+    attr_accessor :ratio
   end
 
   # Data about torrents for use by the end user. 
@@ -306,12 +310,23 @@ module QuartzTorrent
         @logger.warn "Asked to set upload rate limit for a non-existent torrent #{bytesToHex(infoHash)}"
         return
       end
-      
+
       if bytesPerSecond
         torrentData.upRateLimit = RateLimit.new(bytesPerSecond, 2*bytesPerSecond, 0)
       else
         torrentData.upRateLimit = nil
       end
+    end
+
+    # Set the upload ratio. Pass nil to disable
+    def setUploadRatio(infoHash, ratio)
+      torrentData = @torrentData[infoHash]
+      if ! torrentData
+        @logger.warn "Asked to set upload ratio limit for a non-existent torrent #{bytesToHex(infoHash)}"
+        return
+      end
+
+      torrentData.ratio = ratio
     end
 
     # Reactor method called when a peer has connected to us.
@@ -799,6 +814,14 @@ module QuartzTorrent
         return
       end
 
+      if torrentData.state == :uploading && (torrentData.state != :paused) && torrentData.ratio
+        if torrentData.bytesUploaded >= torrentData.ratio*torrentData.blockState.totalLength
+          @logger.info "Pausing torrent due to upload ratio limit." if torrentData.metainfoPieceState.complete?
+          setPaused(infoHash, true)
+          return
+        end
+      end
+
       # Delete any timed-out requests.
       classifiedPeers.establishedPeers.each do |peer|
         toDelete = []
@@ -849,6 +872,13 @@ module QuartzTorrent
           sendMessageToPeer msg, io, peer
           torrentData.blockState.setBlockRequested blockInfo, true
           peer.requestedBlocks[blockInfo.blockIndex] = Time.new
+        end
+      end
+
+      if blockInfos.size == 0
+        if torrentData.blockState.completePieceBitfield.allSet?
+          @logger.info "Download of #{bytesToHex(infoHash)} complete."
+          torrentData.state = :uploading
         end
       end
 
@@ -1400,6 +1430,11 @@ module QuartzTorrent
     # Set the upload rate limit in bytes/second.
     def setUploadRateLimit(infoHash, bytesPerSecond)
       @handler.setUploadRateLimit(infoHash, bytesPerSecond)
+    end
+
+    # Set the upload ratio. Pass nil to disable
+    def setUploadRatio(infoHash, ratio)
+      @handler.setUploadRatio(infoHash, ratio)
     end
 
     private
