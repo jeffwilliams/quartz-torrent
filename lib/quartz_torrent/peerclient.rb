@@ -646,6 +646,10 @@ module QuartzTorrent
     private
     def setPeerDisconnected(peer)
       peer.state = :disconnected
+      peer.uploadRate.reset
+      peer.downloadRate.reset
+      peer.uploadRateDataOnly.reset
+      peer.downloadRateDataOnly.reset
 
       torrentData = @torrentData[peer.infoHash]
       # Are we tracking this torrent?

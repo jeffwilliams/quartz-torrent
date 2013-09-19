@@ -37,7 +37,6 @@ And a specific test case in a test using:
 
 To-Do
 -----
-  - Implement upload ratio.
   - Test adding torrents after client is started.
   - Improve CPU usage. 
   - Implement endgame strategy and support Cancel messages.
@@ -51,4 +50,4 @@ To-Do
     - <http://www.bittorrent.org/beps/bep_0029.html#packet-sizes>
     - <https://forum.utorrent.com/viewtopic.php?id=76640>
     - <https://github.com/bittorrent/libutp>
-
+  

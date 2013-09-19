@@ -3,6 +3,8 @@ require 'minitest/unit'
 require 'minitest/autorun'
 require 'quartz_torrent/ratelimit'
 
+include QuartzTorrent
+
 class TestRateLimit < MiniTest::Unit::TestCase
   def setup
   end

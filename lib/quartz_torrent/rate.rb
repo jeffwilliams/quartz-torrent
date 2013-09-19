@@ -19,6 +19,7 @@ module QuartzTorrent
 
     # Get the current rate. If there are too few samples, 0 is returned.
     def value
+      update 0
       @value ? @value : 0.0
     end
 
