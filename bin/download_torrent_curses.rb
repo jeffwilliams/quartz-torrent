@@ -14,16 +14,6 @@ require 'ruby-prof' if $doProfiling
 
 include QuartzTorrent
 
-DebugTty = "/dev/pts/8"
-
-$log = nil
-begin
-  $log = File.open DebugTty, "w"
-rescue
-  $log = $stdout
-end
-
-
 def getmaxyx(win)
   y = []
   x = []
@@ -92,6 +82,15 @@ class Screen
   end
  
   attr_accessor :peerClient
+
+  protected
+  def drawHeadline
+    ColorScheme.apply(ColorScheme::HeadingColorPair)
+    Ncurses.attron(Ncurses::A_BOLD)
+    waddstrnw @window, "=== QuartzTorrent Downloader  [#{Time.new}] #{$doProfiling ? "PROFILING":""} ===\n\n"
+    Ncurses.attroff(Ncurses::A_BOLD)
+    ColorScheme.apply(ColorScheme::NormalColorPair)
+  end
 end
 
 class SummaryScreen < Screen
@@ -104,11 +103,7 @@ class SummaryScreen < Screen
   def draw
     Ncurses::werase @window
     Ncurses::wmove(@window, 0,0)
-    ColorScheme.apply(ColorScheme::HeadingColorPair)
-    Ncurses.attron(Ncurses::A_BOLD)
-    waddstrnw @window, "=== QuartzTorrent Downloader  [#{Time.new}] #{$doProfiling ? "PROFILING":""} ===\n\n"
-    Ncurses.attroff(Ncurses::A_BOLD) 
-    ColorScheme.apply(ColorScheme::NormalColorPair)
+    drawHeadline
 
     drawTorrents
   end
@@ -235,11 +230,7 @@ class DetailsScreen < Screen
       str = bytesToHex(@infoHash)
     end
 
-    ColorScheme.apply(ColorScheme::HeadingColorPair)
-    Ncurses.attron(Ncurses::A_BOLD)
-    waddstrnw @window, "=== QuartzTorrent Downloader  [#{Time.new}] #{$doProfiling ? "PROFILING":""} ===\n\n"
-    Ncurses.attroff(Ncurses::A_BOLD) 
-    ColorScheme.apply(ColorScheme::NormalColorPair)
+    drawHeadline
 
     if ! @peerClient
       waddstrnw @window, "Loading..."
@@ -420,11 +411,7 @@ class DebugScreen < Screen
     Ncurses::werase @window
     Ncurses::wmove(@window, 0,0)
 
-    ColorScheme.apply(ColorScheme::HeadingColorPair)
-    Ncurses.attron(Ncurses::A_BOLD)
-    waddstrnw @window, "=== QuartzTorrent Downloader  [#{Time.new}] ===\n\n"
-    Ncurses.attroff(Ncurses::A_BOLD) 
-    ColorScheme.apply(ColorScheme::NormalColorPair)
+    drawHeadline
 
     if @lastRefreshTime.nil? || (Time.new - @lastRefreshTime > 4)
       @profilerInfo = @profiler.getCounts
@@ -460,6 +447,8 @@ class HelpScreen < Screen
   def draw
     Ncurses::werase @window
     Ncurses::wmove(@window, 0,0)
+    drawHeadline
+    waddstrnw @window, "\n\n"
     waddstrnw @window, "Global Keys:\n\n"
     waddstrnw @window, "  '?':         Show this help screen\n"
     waddstrnw @window, "  's':         Show the summary screen\n"
@@ -469,6 +458,46 @@ class HelpScreen < Screen
     waddstrnw @window, "  <UP>,<DOWN>: Change which torrent is currently selected\n"
     waddstrnw @window, "  <ENTER>:     Show the torrent details screen for the currently selected torrent\n"
     waddstrnw @window, "  'p':         Pause/Unpause the currently selected torrent\n"
+  end
+end
+
+class AddScreen < Screen
+  def initialize(window)
+    @window = window
+    @error = nil
+  end
+
+  def draw
+    Ncurses::werase @window
+    Ncurses::wmove(@window, 0,0)
+
+    drawHeadline
+    waddstrnw @window, "\n\n"
+
+    drawError
+    waddstrnw @window, "Enter the torrent to add: "
+    setTerminalKeysMode :normal
+    str = ''
+    Ncurses::getstr str
+    setTerminalKeysMode :event
+
+    if str.length == 0
+      @screenManager.set :summary
+    else
+      $log.puts "Adding torrent '#{str}'"
+
+      begin
+        @peerClient.addTorrentFromClient $settings, str if @peerClient
+        @screenManager.set :summary
+      rescue
+        @error = "Adding torrent failed: #{$!}\n\n"
+      end
+    end
+  end
+  
+  private
+  def drawError
+    waddstrnw @window, @error if @error
   end
 end
 
@@ -529,6 +558,22 @@ class ColorScheme
   end
 end
 
+def setTerminalKeysMode(mode)
+  if mode == :normal
+    # Turn on line-buffering
+    Ncurses::nocbreak
+    # Do display characters back
+    Ncurses::echo
+  elsif mode == :event
+    # Turn off line-buffering
+    Ncurses::cbreak
+    # Don't display characters back
+    Ncurses::noecho
+    # Don't block on reading characters (block 1 tenths of seconds)
+    Ncurses.halfdelay(1)
+  end
+end
+
 def initializeCurses
   # Initialize Ncurses
   Ncurses.initscr
@@ -544,13 +589,7 @@ def initializeCurses
   ColorScheme.apply(ColorScheme::NormalColorPair)
   #Ncurses.attron(Ncurses::COLOR_PAIR(1));
 
-  # Turn off line-buffering
-  Ncurses::cbreak
-  # Don't display characters back
-  Ncurses::noecho
-
-  # Don't block on reading characters (block 1 tenths of seconds)
-  Ncurses.halfdelay(1)
+  setTerminalKeysMode :event
 
   # Interpret arrow keys as one character
   Ncurses.keypad Ncurses::stdscr, true
@@ -578,7 +617,7 @@ def initializeLogging(file)
 end
 
 def help
-  puts "Usage: #{$0} [options] <torrent file> [torrent file...]"
+  puts "Usage: #{$0} [options] [torrent file...]"
   puts
   puts "Download torrents using a simple curses UI. One or more torrent files to download should "
   puts "be passed as arguments."
@@ -598,20 +637,55 @@ def help
   puts "  --download-limit N, -d N:"
   puts "      Limit upload speed for each torrent to the specified rate in bytes per second. "
   puts "      The default is no limit."
+  puts
+  puts "  --debug-tty T, -t T:"
+  puts "      Use the specified TTY device file for printing debug info. This should be something"
+  puts "      like '/dev/pts/3'"
+end
+
+class Settings
+  def initialize
+    @baseDirectory = "."
+    @port = 9997
+    @uploadLimit = nil
+    @downloadLimit = nil
+    @uploadRatio = nil
+    @logfile = "/tmp/download_torrent_curses.log"
+  end
+
+  attr_accessor :baseDirectory
+  attr_accessor :port
+  attr_accessor :uploadLimit
+  attr_accessor :downloadLimit
+  attr_accessor :uploadRatio
+  attr_accessor :logfile
+  attr_accessor :debugTTY
+end
+
+class PeerClient
+  def addTorrentFromClient(settings, torrent)
+    # Check if the torrent is a torrent file or a magnet URI
+    infoHash = nil
+    if MagnetURI.magnetURI?(torrent)
+      infoHash = addTorrentByMagnetURI MagnetURI.new(torrent)
+    else
+      metainfo = Metainfo.createFromFile(torrent)
+      infoHash = addTorrentByMetainfo(metainfo)
+    end
+    setDownloadRateLimit infoHash, settings.downloadLimit
+    setUploadRateLimit infoHash, settings.uploadLimit
+    setUploadRatio infoHash, settings.uploadRatio
+  end
 end
 
 #### MAIN
 
+$log = $stdout
+
 exception = nil
 cursesInitialized = false
+$settings = Settings.new
 begin
-
-  baseDirectory = "."
-  port = 9997
-  uploadLimit = nil
-  downloadLimit = nil
-  uploadRatio = nil
-  logfile = "/tmp/download_torrent_curses.log"
 
   opts = GetoptLong.new(
     [ '--basedir', '-d', GetoptLong::REQUIRED_ARGUMENT],
@@ -620,34 +694,36 @@ begin
     [ '--download-limit', '-n', GetoptLong::REQUIRED_ARGUMENT],
     [ '--help', '-h', GetoptLong::NO_ARGUMENT],
     [ '--ratio', '-r', GetoptLong::REQUIRED_ARGUMENT],
+    [ '--debug-tty', '-t', GetoptLong::REQUIRED_ARGUMENT],
   )
 
   opts.each do |opt, arg|
     if opt == '--basedir'
-      baseDirectory = arg
+      $settings.baseDirectory = arg
     elsif opt == '--port'
-      port = arg.to_i
+      $settings.port = arg.to_i
     elsif opt == '--download-limit'
-      downloadLimit = arg.to_i
+      $settings.downloadLimit = arg.to_i
     elsif opt == '--upload-limit'
-      uploadLimit = arg.to_i
+      $settings.uploadLimit = arg.to_i
     elsif opt == '--help'
       help
       exit 0
     elsif opt == '--ratio'
-      uploadRatio = arg.to_f
+      $settings.uploadRatio = arg.to_f
+    elsif opt == '--debug-tty'
+      $log = File.open arg, "w"
     end
   end
 
   torrents = ARGV
-  if torrents.size == 0
-    puts "You need to specify a torrent to download."
-    exit 1
-  end   
+
+  $log = File.open("/dev/null","w") if $log == $stdout
+  
 
   initializeCurses
   cursesInitialized = true
-  initializeLogging(logfile)
+  initializeLogging($settings.logfile)
 
   sumScr = SummaryScreen.new(Ncurses::stdscr)
 
@@ -657,23 +733,14 @@ begin
   scrManager.add :log, LogScreen.new(Ncurses::stdscr)
   scrManager.add :debug, DebugScreen.new(Ncurses::stdscr)
   scrManager.add :help, HelpScreen.new(Ncurses::stdscr)
+  scrManager.add :add, AddScreen.new(Ncurses::stdscr)
   scrManager.set :summary
 
-  peerclient = QuartzTorrent::PeerClient.new(baseDirectory)
-  peerclient.port = port
+  peerclient = QuartzTorrent::PeerClient.new($settings.baseDirectory)
+  peerclient.port = $settings.port
 
   torrents.each do |torrent|
-    # Check if the torrent is a torrent file or a magnet URI
-    infoHash = nil
-    if MagnetURI.magnetURI?(torrent)
-      infoHash = peerclient.addTorrentByMagnetURI MagnetURI.new(torrent)
-    else
-      metainfo = Metainfo.createFromFile(torrent)
-      infoHash = peerclient.addTorrentByMetainfo(metainfo)
-    end
-    peerclient.setDownloadRateLimit infoHash, downloadLimit
-    peerclient.setUploadRateLimit infoHash, uploadLimit
-    peerclient.setUploadRatio infoHash, uploadRatio
+    peerclient.addTorrentFromClient($settings, torrent)
   end
 
   scrManager.peerClient = peerclient
@@ -713,6 +780,8 @@ begin
           scrManager.set :debug
         elsif key.chr == 'h' || key.chr == '?'
           scrManager.set :help
+        elsif key.chr == 'a'
+          scrManager.set :add
         elsif key.chr == "\n"
           # Details
           if scrManager.currentId == :summary
