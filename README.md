@@ -11,6 +11,9 @@ Features:
   - BEP 10: Extension Protocol 
   - BEP 15: UDP Tracker support
   - BEP 23: Tracker Returns Compact Peer Lists
+  - Upload and download rate limiting
+  - Upload ratio enforcement
+  - Validated on Linux and Windows
 
 Requirements
 ------------
@@ -42,7 +45,6 @@ To-Do
   - Change method naming scheme to snake case from camel case.
   - Refactor Metadata.Info into it's own independent class.
   - Documentation
-  - Test on Windows
   - Lower log levels currently being used (some warn messages should be info or debug)
   - In peerclient, prefix log messages with torrent infohash, or (truncated) torrent name
   - Implement uTP
