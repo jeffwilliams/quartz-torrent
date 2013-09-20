@@ -37,7 +37,6 @@ And a specific test case in a test using:
 
 To-Do
 -----
-  - Test adding torrents after client is started.
   - Improve CPU usage. 
   - Implement endgame strategy and support Cancel messages.
   - Change method naming scheme to snake case from camel case.
