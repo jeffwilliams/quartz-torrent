@@ -57,6 +57,9 @@ module QuartzTorrent
         s << arr[i].to_s + unit[i]
         i -= 1
       end
+      
+      s = "0s" if s.length == 0
+ 
       s
     end
   end
