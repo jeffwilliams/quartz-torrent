@@ -15,7 +15,7 @@ module QuartzTorrent
   # This is Linux specific: system call number for gettid
   SYSCALL_GETTID = 224
 
-  def bytesToHex(v, addSpaces = nil)
+  def self.bytesToHex(v, addSpaces = nil)
     s = ""
     v.each_byte{ |b|
       hex = b.to_s(16)
@@ -26,7 +26,7 @@ module QuartzTorrent
     s
   end
 
-  def arrayShuffleRange!(array, start, length)
+  def self.arrayShuffleRange!(array, start, length)
     raise "Invalid range" if start + length > array.size
 
     (start+length).downto(start+1) do |i|
@@ -36,7 +36,7 @@ module QuartzTorrent
     true
   end
 
-  def logBacktraces
+  def self.logBacktraces
     logger = LogManager.getLogger("util")
 
     Thread.list.each do |thread|
@@ -50,7 +50,7 @@ module QuartzTorrent
   end
 
   # Method to set a few thread-local variables useful in debugging. Threads should call this when started.
-  def initThread(name)
+  def self.initThread(name)
     Thread.current[:name] = name
     isLinux = RUBY_PLATFORM.downcase.include?("linux")
     Thread.current[:lwpid] = syscall(SYSCALL_GETTID) if isLinux

@@ -38,7 +38,7 @@ module QuartzTorrent
           file.write bencoded
           # Sanity check
           testInfoHash = Digest::SHA1.digest( bencoded )
-          raise "The computed infoHash #{bytesToHex(testInfoHash)} doesn't match the original infoHash #{bytesToHex(infoHash)}" if testInfoHash != infoHash
+          raise "The computed infoHash #{QuartzTorrent.bytesToHex(testInfoHash)} doesn't match the original infoHash #{QuartzTorrent.bytesToHex(infoHash)}" if testInfoHash != infoHash
         end
       end
 
@@ -222,7 +222,7 @@ module QuartzTorrent
     end
 
     def self.generateInfoFileName(infoHash)
-      "#{bytesToHex(infoHash)}.info"
+      "#{QuartzTorrent.bytesToHex(infoHash)}.info"
     end
 
     private

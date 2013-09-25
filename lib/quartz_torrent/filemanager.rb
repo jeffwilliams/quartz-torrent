@@ -1,10 +1,10 @@
 require 'digest/sha1'
 require 'fileutils'
 require 'thread'
-require 'quartz_torrent/regionmap.rb'
-require 'quartz_torrent/bitfield.rb'
-require 'quartz_torrent/util.rb'
-require 'quartz_torrent/semaphore.rb'
+require 'quartz_torrent/regionmap'
+require 'quartz_torrent/bitfield'
+require 'quartz_torrent/util'
+require 'quartz_torrent/semaphore'
 
 module QuartzTorrent
   class RequestedBlock
@@ -401,7 +401,7 @@ module QuartzTorrent
     def startThread
       @stopped = false
       @thread = Thread.new do
-        initThread("piecemanager")
+        QuartzTorrent.initThread("piecemanager")
         while ! @stopped
           begin
             @requestsSemaphore.wait
@@ -473,7 +473,7 @@ module QuartzTorrent
           # Check hash
           calc = Digest::SHA1.digest(piece)
           if calc != hash
-            @logger.debug "Piece #{index} calculated hash #{bytesToHex(calc)} doesn't match tracker hash #{bytesToHex(hash)}"
+            @logger.debug "Piece #{index} calculated hash #{QuartzTorrent.bytesToHex(calc)} doesn't match tracker hash #{QuartzTorrent.bytesToHex(hash)}"
           else
             completePieceBitfield.set(index)
             @logger.debug "Piece #{index+1}/#{piecesHashes.length} is complete."
@@ -496,7 +496,7 @@ module QuartzTorrent
         hash = piecesHashes[pieceIndex]
         calc = Digest::SHA1.digest(piece)
         if calc != hash
-          @logger.info "Piece #{pieceIndex} calculated hash #{bytesToHex(calc)} doesn't match tracker hash #{bytesToHex(hash)}"
+          @logger.info "Piece #{pieceIndex} calculated hash #{QuartzTorrent.bytesToHex(calc)} doesn't match tracker hash #{QuartzTorrent.bytesToHex(hash)}"
         else
           @logger.debug "Piece #{pieceIndex+1}/#{piecesHashes.length} hash is correct."
           result = true

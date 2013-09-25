@@ -176,7 +176,7 @@ module QuartzTorrent
       return if @started
       @started = true
       @worker = Thread.new do
-        initThread("trackerclient")
+        QuartzTorrent.initThread("trackerclient")
         @logger.info "Worker thread starting"
         @event = :started
         trackerInterval = nil

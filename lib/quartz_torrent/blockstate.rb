@@ -337,13 +337,13 @@ module QuartzTorrent
           # New range
           rangeLen = i-left+1
           
-          arrayShuffleRange!(rarityOrder, left, rangeLen)
+          QuartzTorrent.arrayShuffleRange!(rarityOrder, left, rangeLen)
 
           left = i+1
           leftVal = rarityOrder[left][0] if left < @numPieces
         end
       end
-      arrayShuffleRange!(rarityOrder, left, @numPieces-left) if left < @numPieces
+      QuartzTorrent.arrayShuffleRange!(rarityOrder, left, @numPieces-left) if left < @numPieces
       
       rarityOrder
     end  

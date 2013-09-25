@@ -753,7 +753,7 @@ begin
     running = false
   end
 
-  initThread("main")
+  QuartzTorrent.initThread("main")
   if Signal.list.has_key?('USR1')
     Signal.trap('SIGUSR1') do
       QuartzTorrent.logBacktraces
