@@ -9,11 +9,11 @@ module QuartzTorrent
     # Format a size in bytes.
     def self.formatSize(size)
       s = size.to_f
-      if s > Gig
+      if s >= Gig
         s = "%.2fGB" % (s / Gig)
-      elsif s > Meg
+      elsif s >= Meg
         s = "%.2fMB" % (s / Meg)
-      elsif s > Kb
+      elsif s >= Kb
         s = "%.2fKB" % (s / Kb)
       else
         s = "%.2fB" % s
@@ -62,5 +62,31 @@ module QuartzTorrent
  
       s
     end
+
+    # Parse a size in the format '50 KB'
+    def self.parseSize(size)
+      if size =~ /(\d+(?:\.\d+)?)\s*([^\d]+)*/
+        value = $1.to_f
+        suffix = ($2 ? $2.downcase : nil)
+
+        multiplicand = 1
+        if suffix.nil? || suffix == 'b'
+          multiplicand = 1
+        elsif suffix == 'kb'
+          multiplicand = Kb
+        elsif suffix == 'mb'
+          multiplicand = Meg
+        elsif suffix == 'gb'
+          multiplicand = Gig
+        else
+          raise "Unknown suffix '#{suffix}' for size '#{size}'"
+        end
+   
+        value*multiplicand
+      else  
+        raise "Malformed size '#{size}'"
+      end
+    end
   end
+
 end
