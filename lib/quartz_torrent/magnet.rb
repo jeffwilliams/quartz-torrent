@@ -7,6 +7,7 @@ module QuartzTorrent
     # Create a new MagnetURI object given a magnet URI string.
     def initialize(str)
       @params = {}
+      @raw = str
 
       if str =~ @@regex
         parseQuery $1
@@ -14,6 +15,8 @@ module QuartzTorrent
         raise "Not a magnet URI"
       end
     end
+
+    attr_reader :raw
 
     def self.magnetURI?(str)
       str =~ @@regex
