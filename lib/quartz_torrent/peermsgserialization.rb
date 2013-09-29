@@ -20,10 +20,12 @@ module QuartzTorrent
       raise EOFError.new if packedLength.length == 0
 
       length = packedLength.unpack("N")[0]
+      @logger.debug "unserializeFrom: read that length of message is #{length}"
       raise "Received peer message with length #{length}. All messages must have length >= 0" if length < 0
       return KeepAlive.new if length == 0
       
       id = io.read(1).unpack("C")[0]
+      @logger.debug "unserializeFrom: read message id #{id}"
       payload = io.read(length-1)
 
       #raise "Unsupported peer message id #{id}" if id >= self.classForMessage.length

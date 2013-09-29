@@ -952,7 +952,7 @@ module QuartzTorrent
           msg.piece = metaData.data.requestMsg.piece
           msg.data = result.data
           withPeersIo(metaData.data.peer, "sending extended metainfo piece message") do |io|
-            @logger.info "Sending metainfo piece to #{metaData.data.peer}: piece #{msg.piece}"
+            @logger.info "Sending metainfo piece to #{metaData.data.peer}: piece #{msg.piece} with data length #{msg.data.length}"
             sendMessageToPeer msg, io, metaData.data.peer
           end
           result.data
@@ -1181,6 +1181,9 @@ module QuartzTorrent
 
       # Schedule checking for PieceManager results
       @reactor.scheduleTimer(@requestBlocksPeriod, [:check_piece_manager, torrentData.infoHash], true, false)
+
+      # Schedule checking for metainfo PieceManager results (including when piece reading completes)
+      @reactor.scheduleTimer(@requestBlocksPeriod, [:check_metadata_piece_manager, torrentData.infoHash], true, false)
     end
  
     # Start the actual torrent download. This method schedules the necessary timers and registers the necessary listeners
@@ -1232,6 +1235,7 @@ module QuartzTorrent
         @logger.info "Got extended metainfo request for piece #{msg.piece}"
         # Build a response for this piece.
         if torrentData.metainfoPieceState.pieceCompleted? msg.piece
+          @logger.debug "Requesting extended metainfo piece #{msg.piece} from metainfoPieceState."
           id = torrentData.metainfoPieceState.readPiece msg.piece
           torrentData.pieceManagerMetainfoRequestMetadata[id] = 
             PieceManagerRequestMetadata.new(:read, ReadRequestMetadata.new(peer,msg))
@@ -1245,7 +1249,7 @@ module QuartzTorrent
           end
         end
       elsif msg.msgType == :piece
-        @logger.info "Got extended metainfo piece response for piece #{msg.piece}"
+        @logger.info "Got extended metainfo piece response for piece #{msg.piece} with data length #{msg.data.length}"
         if ! torrentData.metainfoPieceState.pieceCompleted? msg.piece
           id = torrentData.metainfoPieceState.savePiece msg.piece, msg.data
           torrentData.pieceManagerMetainfoRequestMetadata[id] = 
@@ -1427,16 +1431,19 @@ module QuartzTorrent
 
     # Set the download rate limit in bytes/second.
     def setDownloadRateLimit(infoHash, bytesPerSecond)
+      raise "download rate limit must be an Integer, not a #{bytesPerSecond.class}" if bytesPerSecond && ! bytesPerSecond.is_a?(Integer)
       @handler.setDownloadRateLimit(infoHash, bytesPerSecond)
     end
 
     # Set the upload rate limit in bytes/second.
     def setUploadRateLimit(infoHash, bytesPerSecond)
+      raise "upload rate limit must be an Integer, not a #{bytesPerSecond.class}" if bytesPerSecond && ! bytesPerSecond.is_a?(Integer)
       @handler.setUploadRateLimit(infoHash, bytesPerSecond)
     end
 
     # Set the upload ratio. Pass nil to disable
     def setUploadRatio(infoHash, ratio)
+      raise "upload ratio must be Numeric, not a #{ratio.class}" if ratio && ! ratio.is_a?(Numeric)
       @handler.setUploadRatio(infoHash, ratio)
     end
 

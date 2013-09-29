@@ -78,6 +78,7 @@ module QuartzTorrent
     # Check if the metainfo has already been downloaded successfully during a previous session.
     # Returns the completed, Metainfo::Info object if it is complete, and nil otherwise.
     def self.downloaded(baseDirectory, infoHash)
+      logger = LogManager.getLogger("metainfo_piece_state")
       infoFileName = generateInfoFileName(infoHash)
       path = "#{baseDirectory}#{File::SEPARATOR}#{infoFileName}"
 
@@ -87,8 +88,14 @@ module QuartzTorrent
           bencoded = file.read
           # Sanity check
           testInfoHash = Digest::SHA1.digest( bencoded )
-          result = Metainfo::Info.createFromBdecode(bencoded.bdecode) if testInfoHash == infoHash
+          if testInfoHash == infoHash
+            result = Metainfo::Info.createFromBdecode(bencoded.bdecode) 
+          else
+            logger.info "the computed SHA1 hash doesn't match the specified infoHash in #{path}"
+          end
         end
+      else
+        logger.info "the metainfo file #{path} doesn't exist"
       end
       result
     end

@@ -474,7 +474,9 @@ module QuartzTorrent
     private
     def extendedMsgPayloadLength
       updateDictFromProps
-      @dict.bencode.length
+      len = @dict.bencode.length
+      len += @data.length if dict['msg_type'] == 1
+      len
     end
 
     def updateDictFromProps
