@@ -40,6 +40,8 @@ And a specific test case in a test using:
 
 To-Do
 -----
+  - When logs roll, the different loggers may end up writing to different "old" logs
+    such as log, log.0, log.1 etc, meaning messages are no longer consolidated.
   - Improve CPU usage. 
   - Implement endgame strategy and support Cancel messages.
   - Change method naming scheme to snake case from camel case.

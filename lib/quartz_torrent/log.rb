@@ -16,6 +16,8 @@ module QuartzTorrent
     @@loggers = {}
     @@levels = {}
     @@defaultLevel = Logger::ERROR
+    @@maxOldLogs = 10
+    @@maxLogSize = 1048576
 
     # Initialize logging information from the environment. The environment variable
     # QUARTZ_TORRENT_LOGFILE specifies which file logging is written to, and can also take the 
@@ -63,10 +65,20 @@ module QuartzTorrent
       @@defaultLevel = parseLogLevel(level)
     end
 
+    # Set number of old log files to keep when rotating.
+    def self.maxOldLogs=(num)
+      @@maxOldLogs = num
+    end
+
+    # Max size of a single logfile in bytes
+    def self.maxLogSize=(size)
+      @@maxLogSize = size
+    end
+
     def self.getLogger(name)
       logger = @@loggers[name] 
       if ! logger
-        logger = Logger.new(@@logFile)
+        logger = Logger.new(@@logFile, @@maxOldLogs, @@maxLogSize)
         level = @@levels[name]
         if level
           logger.level = level
