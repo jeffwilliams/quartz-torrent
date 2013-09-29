@@ -43,7 +43,7 @@ end
 def torrentDisplayName(torrent)
   return "Unknown" if ! torrent 
   name = torrent.recommendedName
-  name = bytesToHex(infohash) if ! name || name.length == 0
+  name = QuartzTorrent::bytesToHex(torrent.infoHash) if ! name || name.length == 0
   name
 end
 
@@ -227,7 +227,7 @@ class DetailsScreen < Screen
     Ncurses::wmove(@window, 0,0)
     str = "nil"
     if @infoHash
-      str = bytesToHex(@infoHash)
+      str = QuartzTorrent::bytesToHex(@infoHash)
     end
 
     drawHeadline
@@ -614,6 +614,7 @@ def initializeLogging(file)
   LogManager.setLevel "blockstate", :debug
   LogManager.setLevel "piecemanager", :info
   LogManager.setLevel "peerholder", :debug
+  #LogManager.setLevel "peermsg_serializer", :debug
 end
 
 def help
