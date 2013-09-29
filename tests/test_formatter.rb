@@ -34,6 +34,9 @@ class TestFormatter < MiniTest::Unit::TestCase
     assert_equal 1048576, Formatter.parseSize("1.000 Mb")
     assert_equal 1048576*1024, Formatter.parseSize("1.000 Gb")
 
+    # Allow parsing a speed as a size
+    assert_equal 102400, Formatter.parseSize("100KB/s")
+    assert_equal 100, Formatter.parseSize("100 B/s")
   end
 
 end

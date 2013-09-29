@@ -70,13 +70,13 @@ module QuartzTorrent
         suffix = ($2 ? $2.downcase : nil)
 
         multiplicand = 1
-        if suffix.nil? || suffix == 'b'
+        if suffix.nil? || suffix[0] == 'b'
           multiplicand = 1
-        elsif suffix == 'kb'
+        elsif suffix[0,2] == 'kb'
           multiplicand = Kb
-        elsif suffix == 'mb'
+        elsif suffix[0,2] == 'mb'
           multiplicand = Meg
-        elsif suffix == 'gb'
+        elsif suffix[0,2] == 'gb'
           multiplicand = Gig
         else
           raise "Unknown suffix '#{suffix}' for size '#{size}'"
