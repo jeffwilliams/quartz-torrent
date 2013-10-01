@@ -86,7 +86,7 @@ module QuartzTorrent
       @peersByAddr.values
     end
 
-    def to_s(infoHash)
+    def to_s(infoHash = nil)
       def makeFlags(peer)
         s = "["
         s << "c" if peer.amChoked
@@ -97,12 +97,16 @@ module QuartzTorrent
         s
       end    
 
-      s = "Peers: \n"
-      peers = @peersByInfoHash[infoHash]
-      if peers
-        peers.each do |peer|
-          s << "  #{peer.to_s} #{makeFlags(peer)}\n"
+      if infoHash
+        s = "Peers: \n"
+        peers = @peersByInfoHash[infoHash]
+        if peers
+          peers.each do |peer|
+            s << "  #{peer.to_s} #{makeFlags(peer)}\n"
+          end
         end
+      else
+        "PeerHolder"
       end
       s 
     end

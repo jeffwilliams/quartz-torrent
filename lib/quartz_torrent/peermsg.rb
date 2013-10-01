@@ -113,7 +113,7 @@ module QuartzTorrent
     end
 
     def to_s
-      "#{this.class} message"
+      "#{self.class} message"
     end
   end
 
