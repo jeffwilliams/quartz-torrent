@@ -69,6 +69,7 @@ module QuartzTorrent
 
     # Cancel a timer scheduled with scheduleTimer.
     def cancelTimer(timerInfo)
+      return if ! timerInfo
       @reactor.cancelTimer(timerInfo) if @reactor
     end
 
@@ -199,6 +200,12 @@ module QuartzTorrent
 
     attr_accessor :logger
 
+    # Method needed for disposeIo to work without breaking encapsulation of 
+    # WriteOnlyIoFacade.
+    def removeFromIOHash(hash)
+      hash.delete @io
+    end
+
     def read(length)
       data = ''
       while data.length < length
@@ -257,6 +264,10 @@ module QuartzTorrent
     def flush
       @io.flush
     end
+  
+    def close
+      @io.close
+    end
   end
 
   # An IoFacade that doesn't allow reading.
@@ -309,9 +320,9 @@ module QuartzTorrent
       def initialize(duration, recurring, metainfo)
         @duration = duration
         @recurring = recurring
-        @expiry = Time.new + @duration
         @metainfo = metainfo
         @cancelled = false
+        refresh
       end
       attr_accessor :recurring
       attr_accessor :duration
@@ -324,11 +335,16 @@ module QuartzTorrent
       def secondsUntilExpiry
         @expiry - Time.new
       end
+
+      def refresh
+        @expiry = Time.new + @duration
+      end
     end
 
-    def initialize
+    def initialize(logger = nil)
       @queue = PQueue.new { |a,b| b.expiry <=> a.expiry }
       @mutex = Mutex.new
+      @logger = logger
     end
 
     # Add a timer. Parameter 'duration' specifies the timer duration in seconds,
@@ -362,7 +378,8 @@ module QuartzTorrent
       result = nil
       @mutex.synchronize{ result = @queue.pop }
       if result && result.recurring
-        add(result.duration, result.metainfo, result.recurring)
+        result.refresh
+        @mutex.synchronize{ @queue.push result }
       end
       result
     end
@@ -370,7 +387,9 @@ module QuartzTorrent
     private 
     
     def clearCancelled
-      @queue.pop while @queue.top && @queue.top.cancelled
+      while @queue.top && @queue.top.cancelled
+        info = @queue.pop 
+      end
     end
   end
 
@@ -406,7 +425,7 @@ module QuartzTorrent
 
       # Hash of IOInfo objects, keyed by io.
       @ioInfo = {}
-      @timerManager = TimerManager.new
+      @timerManager = TimerManager.new(logger)
       @currentIoInfo = nil
       @logger = logger
       @listenBacklog = 10
@@ -503,10 +522,11 @@ module QuartzTorrent
       timerInfo = @timerManager.add(duration, metainfo, recurring, immed)
       # This timer may expire sooner than the current sleep we are doing in select(). To make
       # sure we will write to the event pipe to break out of select().
-      return if @currentEventPipeChars > 0
-      @eventWrite.write 'x'
-      @currentEventPipeChars += 1
-      @eventWrite.flush
+      if @currentEventPipeChars == 0
+        @eventWrite.write 'x'
+        @currentEventPipeChars += 1
+        @eventWrite.flush
+      end
       timerInfo
     end  
 
@@ -772,12 +792,22 @@ module QuartzTorrent
           end
           io.io.close
         rescue
+          @logger.warn "Closing IO failed with exception #{$!}"
         end
         @ioInfo.delete io.io
+      elsif io.is_a?(IoFacade)
+        begin
+          io.close
+        rescue
+          @logger.warn "Closing IO failed with exception #{$!}"
+        end
+
+        io.removeFromIOHash(@ioInfo)
       else
         begin
           io.close
         rescue
+          @logger.warn "Closing IO failed with exception #{$!}"
         end
         @ioInfo.delete io
       end

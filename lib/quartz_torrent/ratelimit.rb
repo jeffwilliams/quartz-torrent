@@ -16,6 +16,8 @@ module QuartzTorrent
       @pool = @initialValue
       @time = Time.new
     end
+  
+    attr_reader :unitsPerSecond
 
     # How much is in the pool.
     def avail

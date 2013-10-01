@@ -46,6 +46,10 @@ module QuartzTorrent
       @blockState = nil
       @metainfoPieceState = nil
       @metainfoRequestTimer = nil
+      @managePeersTimer = nil
+      @checkMetadataPieceManagerTimer = nil
+      @checkPieceManagerTimer = nil
+      @requestBlocksTimer = nil
       @paused = false
       @downRateLimit = nil
       @upRateLimit = nil
@@ -75,6 +79,15 @@ module QuartzTorrent
     # The timer handle for the timer that requests metainfo pieces. This is used to cancel the 
     # timer when the metadata is completely downloaded.
     attr_accessor :metainfoRequestTimer
+    # Timer handle for timer that manages peers.
+    attr_accessor :managePeersTimer
+    # Timer handle for timer that checks metadata piece manager results
+    attr_accessor :checkMetadataPieceManagerTimer
+    # Timer handle for timer that checks piece manager results
+    attr_accessor :checkPieceManagerTimer
+    # Timer handle for timer that requests blocks
+    attr_accessor :requestBlocksTimer
+
     attr_accessor :paused
     # The RateLimit for downloading this torrent.
     attr_accessor :downRateLimit
@@ -92,6 +105,8 @@ module QuartzTorrent
       fillFrom(torrentData)
       @torrentData = torrentData
       @peerClientHandler = peerClientHandler
+      @downloadRateLimit = nil
+      @uploadRateLimit = nil
     end
 
     # Torrent Metainfo.info struct. This is nil if the torrent has no metadata and we haven't downloaded it yet
@@ -102,6 +117,10 @@ module QuartzTorrent
     attr_accessor :recommendedName
     attr_reader :downloadRate
     attr_reader :uploadRate
+    # Download rate limit in bytes/second if a limit is set, nil otherwise
+    attr_reader :downloadRateLimit
+    # Upload rate limit in bytes/second if a limit is set, nil otherwise
+    attr_reader :uploadRateLimit
     attr_reader :downloadRateDataOnly
     attr_reader :uploadRateDataOnly
     attr_reader :completedBytes
@@ -169,6 +188,9 @@ module QuartzTorrent
           @recommendedName = nil
         end
       end
+
+      @downloadRateLimit = torrentData.downRateLimit.unitsPerSecond if torrentData.downRateLimit
+      @uploadRateLimit = torrentData.upRateLimit.unitsPerSecond if torrentData.upRateLimit
     end
 
     def buildPeersList(torrentData)
@@ -228,14 +250,16 @@ module QuartzTorrent
         #torrentData.metainfoPieceState = MetainfoPieceState.new(@baseDirectory, infoHash, )
 
         # Schedule peer connection management. Recurring and immediate 
-        @reactor.scheduleTimer(@managePeersPeriod, [:manage_peers, torrentData.infoHash], true, true)
+        torrentData.managePeersTimer = 
+          @reactor.scheduleTimer(@managePeersPeriod, [:manage_peers, torrentData.infoHash], true, true)
 
         # Schedule a timer for requesting metadata pieces from peers.
-        t = @reactor.scheduleTimer(@requestBlocksPeriod, [:request_metadata_pieces, infoHash], true, false)
-        torrentData.metainfoRequestTimer = t
+        torrentData.metainfoRequestTimer = 
+          @reactor.scheduleTimer(@requestBlocksPeriod, [:request_metadata_pieces, infoHash], true, false)
 
         # Schedule checking for metainfo PieceManager results (including when piece reading completes)
-        @reactor.scheduleTimer(@requestBlocksPeriod, [:check_metadata_piece_manager, infoHash], true, false)
+        torrentData.checkMetadataPieceManagerTimer =
+          @reactor.scheduleTimer(@requestBlocksPeriod, [:check_metadata_piece_manager, infoHash], true, false)
       end
       
       torrentData
@@ -243,15 +267,50 @@ module QuartzTorrent
 
     # Remove a torrent.
     def removeTorrent(infoHash)
+      # Can't do this right now, since it could be in use by an event handler. Use an immediate, non-recurring timer instead.
+      @logger.info "Scheduling immediate timer to remove torrent #{QuartzTorrent.bytesToHex(infoHash)}"
+      @reactor.scheduleTimer(0, [:removetorrent, infoHash], false, true)
+    end
+
+    def handleRemoveTorrent(infoHash)
       torrentData = @torrentData.delete infoHash
+      if ! torrentData
+        @logger.warn "Asked to remove a non-existent torrent #{QuartzTorrent.bytesToHex(infoHash)}"
+        return
+      end
+      @logger.info "Removing torrent #{QuartzTorrent.bytesToHex(infoHash)}"
+
+      @logger.info "Removing torrent: no torrentData.metainfoRequestTimer" if ! torrentData.metainfoRequestTimer
+      @logger.info "Removing torrent: no torrentData.managePeersTimer" if ! torrentData.managePeersTimer 
+      @logger.info "Removing torrent: no torrentData.checkMetadataPieceManagerTimer" if ! torrentData.checkMetadataPieceManagerTimer 
+      @logger.info "Removing torrent: no torrentData.checkPieceManagerTimer" if ! torrentData.checkPieceManagerTimer 
+      @logger.info "Removing torrent: no torrentData.requestBlocksTimer" if ! torrentData.requestBlocksTimer 
+        
+
+      # Stop all timers
+      cancelTimer torrentData.metainfoRequestTimer if torrentData.metainfoRequestTimer
+      cancelTimer torrentData.managePeersTimer if torrentData.managePeersTimer
+      cancelTimer torrentData.checkMetadataPieceManagerTimer if torrentData.checkMetadataPieceManagerTimer
+      cancelTimer torrentData.checkPieceManagerTimer if torrentData.checkPieceManagerTimer
+      cancelTimer torrentData.requestBlocksTimer if torrentData.requestBlocksTimer
   
-      if torrentData    
-        torrentData.trackerClient.removePeersChangedListener(torrentData.peerChangeListener)
+      torrentData.trackerClient.removePeersChangedListener(torrentData.peerChangeListener)
+
+      # Remove all the peers for this torrent.
+      torrentData.peers.all.each do |peer|
+        if peer.state != :disconnected
+          # Close socket 
+          withPeersIo(peer, "when removing torrent") do |io|
+            setPeerDisconnected(peer)
+            close(io)
+            @logger.info "Closing connection to peer #{peer}"
+          end
+        end
+        torrentData.peers.delete peer
       end
 
-      # Delete all peers related to this torrent
-      # Can't do this right now, since it could be in use by an event handler. Use an immediate, non-recurring timer instead.
-      @reactor.scheduleTimer(0, [:removetorrent, infoHash], false, true)
+      # Stop tracker client
+      torrentData.trackerClient.stop 
     end
 
     # Pause or unpause the specified torrent.
@@ -283,7 +342,8 @@ module QuartzTorrent
   
         # Get our list of peers and start connecting right away
         # Non-recurring and immediate timer
-        @reactor.scheduleTimer(@managePeersPeriod, [:manage_peers, torrentData.infoHash], false, true)
+        torrentData.managePeersTimer = 
+          @reactor.scheduleTimer(@managePeersPeriod, [:manage_peers, torrentData.infoHash], false, true)
       end
     end
 
@@ -557,23 +617,7 @@ module QuartzTorrent
       elsif metadata.is_a?(Array) && metadata[0] == :handshake_timeout
         handleHandshakeTimeout(metadata[1])
       elsif metadata.is_a?(Array) && metadata[0] == :removetorrent
-        torrentData = @torrentData[metadata[1]]
-        if ! torrentData
-          @logger.warn "No torrent data found for torrent #{QuartzTorrent.bytesToHex(metadata[1])}."
-          return
-        end
-
-        # Remove all the peers for this torrent.
-        torrentData.peers.all.each do |peer|
-          if peer.state != :disconnected
-            # Close socket 
-            withPeersIo(peer, "when removing torrent") do |io|
-              setPeerDisconnected(peer)
-              close(io)
-            end
-          end
-          torrentData.peers.delete peer
-        end
+        handleRemoveTorrent(metadata[1])
       elsif metadata.is_a?(Array) && metadata[0] == :get_torrent_data
         @torrentData.each do |k,v|
           begin
@@ -929,7 +973,7 @@ module QuartzTorrent
     def checkMetadataPieceManagerResults(infoHash)
       torrentData = @torrentData[infoHash]
       if ! torrentData
-        @logger.error "Request blocks peers: tracker client for torrent #{QuartzTorrent.bytesToHex(infoHash)} not found."
+        @logger.error "Check piece manager results: tracker client for torrent #{QuartzTorrent.bytesToHex(infoHash)} not found."
         return
       end
  
@@ -1180,10 +1224,12 @@ module QuartzTorrent
       end
 
       # Schedule checking for PieceManager results
-      @reactor.scheduleTimer(@requestBlocksPeriod, [:check_piece_manager, torrentData.infoHash], true, false)
+      torrentData.checkPieceManagerTimer =
+        @reactor.scheduleTimer(@requestBlocksPeriod, [:check_piece_manager, torrentData.infoHash], true, false)
 
       # Schedule checking for metainfo PieceManager results (including when piece reading completes)
-      @reactor.scheduleTimer(@requestBlocksPeriod, [:check_metadata_piece_manager, torrentData.infoHash], true, false)
+      torrentData.checkMetadataPieceManagerTimer =
+        @reactor.scheduleTimer(@requestBlocksPeriod, [:check_metadata_piece_manager, torrentData.infoHash], true, false)
     end
  
     # Start the actual torrent download. This method schedules the necessary timers and registers the necessary listeners
@@ -1195,14 +1241,17 @@ module QuartzTorrent
         @logger.info "Managing peers for torrent #{QuartzTorrent.bytesToHex(torrentData.infoHash)} on peer change event"
   
         # Non-recurring and immediate timer
-        @reactor.scheduleTimer(@managePeersPeriod, [:manage_peers, torrentData.infoHash], false, true)
+        torrentData.managePeersTimer =
+          @reactor.scheduleTimer(@managePeersPeriod, [:manage_peers, torrentData.infoHash], false, true)
       end
       torrentData.trackerClient.addPeersChangedListener torrentData.peerChangeListener
 
       # Schedule peer connection management. Recurring and immediate 
-      @reactor.scheduleTimer(@managePeersPeriod, [:manage_peers, torrentData.infoHash], true, true)
+      torrentData.managePeersTimer =
+        @reactor.scheduleTimer(@managePeersPeriod, [:manage_peers, torrentData.infoHash], true, true)
       # Schedule requesting blocks from peers. Recurring and not immediate
-      @reactor.scheduleTimer(@requestBlocksPeriod, [:request_blocks, torrentData.infoHash], true, false)
+      torrentData.requestBlocksTimer =
+        @reactor.scheduleTimer(@requestBlocksPeriod, [:request_blocks, torrentData.infoHash], true, false)
       torrentData.state = :running
     end
  
@@ -1445,6 +1494,10 @@ module QuartzTorrent
     def setUploadRatio(infoHash, ratio)
       raise "upload ratio must be Numeric, not a #{ratio.class}" if ratio && ! ratio.is_a?(Numeric)
       @handler.setUploadRatio(infoHash, ratio)
+    end
+
+    def removeTorrent(infoHash)
+      @handler.removeTorrent(infoHash)
     end
 
     private
