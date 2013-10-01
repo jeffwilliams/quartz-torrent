@@ -26,6 +26,10 @@ module QuartzTorrent
     s
   end
 
+  def self.hexToBytes(v)
+    [v].pack "H*"
+  end
+
   def self.arrayShuffleRange!(array, start, length)
     raise "Invalid range" if start + length > array.size
 
