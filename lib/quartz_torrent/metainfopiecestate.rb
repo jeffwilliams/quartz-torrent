@@ -4,6 +4,7 @@ require 'quartz_torrent/metainfo'
 require "quartz_torrent/piecemanagerrequestmetadata.rb"
 require "quartz_torrent/peerholder.rb"
 require 'digest/sha1' 
+require 'fileutils' 
 
 # This class is used when we don't have the info struct for the torrent (no .torrent file) and must
 # download it piece by piece from peers. It keeps track of the pieces we have.
@@ -25,8 +26,10 @@ module QuartzTorrent
       @logger = LogManager.getLogger("metainfo_piece_state")
 
       @requestTimeout = 5
+      @baseDirectory = baseDirectory
       @infoFileName = MetainfoPieceState.generateInfoFileName(infoHash)
-      path = "#{baseDirectory}#{File::SEPARATOR}#{@infoFileName}"
+
+      path = infoFilePath
 
       completed = MetainfoPieceState.downloaded(baseDirectory, infoHash)
       metainfoSize = File.size(path) if ! metainfoSize && completed
@@ -127,8 +130,6 @@ module QuartzTorrent
     # Get the completed metainfo. Raises an exception if it's not yet complete.
     def completedMetainfo
       raise "Metadata is not yet complete" if ! complete?
-
-      
     end
 
     def savePiece(pieceIndex, data)
@@ -232,6 +233,13 @@ module QuartzTorrent
       "#{QuartzTorrent.bytesToHex(infoHash)}.info"
     end
 
+    # Remove the metainfo file
+    def remove
+      path = infoFilePath
+      FileUtils.rm path
+    end
+
+
     private
     # Remove any pending requests after a timeout.
     def removeOldRequests
@@ -244,6 +252,10 @@ module QuartzTorrent
           end
         end
       end
+    end
+
+    def infoFilePath
+      "#{@baseDirectory}#{File::SEPARATOR}#{@infoFileName}"
     end
   end
 end
