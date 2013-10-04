@@ -1,5 +1,7 @@
 require 'quartz_torrent/util'
 require 'uri'
+require 'base32'
+
 module QuartzTorrent
   class MagnetURI
     @@regex = /magnet:\?(.*)/
@@ -38,7 +40,8 @@ module QuartzTorrent
             # Hex-encoded info hash. Convert to binary.
             result = [hash].pack "H*" 
           else
-            raise "Base32 encoding of magnet links is not supported"
+            # Base32 encoded
+            result = Base32.decode hash
           end
           break
         end
