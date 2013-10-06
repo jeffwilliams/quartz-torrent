@@ -640,6 +640,11 @@ def help
   puts "      Limit upload speed for each torrent to the specified rate in bytes per second. "
   puts "      The default is no limit."
   puts
+  puts "  --ratio N, -r N:"
+  puts "      Upload ratio. If we have completed downloading the torrent, when we have uploaded "
+  puts "      N times the size of the torrent, stop uploading."
+  puts "      The default is to never stop uploading."
+  puts
   puts "  --debug-tty T, -t T:"
   puts "      Use the specified TTY device file for printing debug info. This should be something"
   puts "      like '/dev/pts/3'"
