@@ -41,8 +41,6 @@ And a specific test case in a test using:
 To-Do
 -----
   - Need to move pausing torrents to happen on a timer in the reactor thread like removing a torrent does. 
-  - When logs roll, the different loggers may end up writing to different "old" logs
-    such as log, log.0, log.1 etc, meaning messages are no longer consolidated.
   - Start a peerclient with the full torrent. Connect with another peerclient and start downloading, then pause.
     Finally unpause. The "server" peerclient will refuse the connections to re-establish because it beleives the
     peer is already connected.
