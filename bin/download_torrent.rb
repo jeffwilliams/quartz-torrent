@@ -57,10 +57,11 @@ opts.each do |opt, arg|
   end
 end
 
-LogManager.initializeFromEnv
-#QuartzTorrent::LogManager.setLevel "peerclient", :info
-LogManager.logFile= "stdout"
-LogManager.defaultLevel= :info
+QuartzTorrent::LogManager.initializeFromEnv
+LogManager.setup do
+  setLogfile "stdout"
+  setDefaultLevel :info
+end
 LogManager.setLevel "peer_manager", :info
 LogManager.setLevel "tracker_client", :debug
 LogManager.setLevel "http_tracker_client", :debug

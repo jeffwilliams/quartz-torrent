@@ -351,7 +351,6 @@ class DebugScreen < Screen
     @profiler.trackClass QuartzTorrent::HttpTrackerClient
     @profiler.trackClass QuartzTorrent::InterruptibleSleep
     @profiler.trackClass QuartzTorrent::LogManager
-    @profiler.trackClass QuartzTorrent::LogManager::NullIO
     @profiler.trackClass QuartzTorrent::Metainfo
     @profiler.trackClass QuartzTorrent::Metainfo::FileInfo
     @profiler.trackClass QuartzTorrent::Metainfo::Info
@@ -602,8 +601,10 @@ end
 def initializeLogging(file)
   QuartzTorrent::LogManager.initializeFromEnv
   FileUtils.rm file if File.exists?(file)
-  LogManager.logFile = file
-  LogManager.defaultLevel = :info
+  LogManager.setup do
+    setLogfile file
+    setDefaultLevel :info
+  end
   LogManager.setLevel "peer_manager", :debug
   LogManager.setLevel "tracker_client", :debug
   LogManager.setLevel "http_tracker_client", :debug

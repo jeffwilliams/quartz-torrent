@@ -12,6 +12,7 @@ Gem::Specification.new do |s|
   s.add_runtime_dependency "bencode", '~> 0.8'
   s.add_runtime_dependency "pqueue", '~> 2.0'
   s.add_runtime_dependency "base32", '~> 0.2'
+  s.add_runtime_dependency "log4r", '~> 1.1'
 
   s.add_development_dependency "minitest"
 end
