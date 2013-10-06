@@ -9,6 +9,13 @@ Gem::Specification.new do |s|
   s.homepage    =
     'https://github.com/jeffwilliams/quartz-torrent'
 
+  s.executables = [
+    "quartztorrent_download",
+    "quartztorrent_download_curses",
+    "quartztorrent_magnet_from_torrent",
+    "quartztorrent_show_info",
+  ]
+
   s.add_runtime_dependency "bencode", '~> 0.8'
   s.add_runtime_dependency "pqueue", '~> 2.0'
   s.add_runtime_dependency "base32", '~> 0.2'
