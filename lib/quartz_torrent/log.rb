@@ -1,9 +1,8 @@
 require 'log4r'
-include Log4r
 
 # For some reason the Log4r log level constants (ERROR, etc) are not defined until we 
 # create at least one logger. Here I create one unused one so that the constants exist.
-Logger.new '__init'
+Log4r::Logger.new '__init'
 
 module QuartzTorrent
   # Class used to control logging.
@@ -28,11 +27,11 @@ module QuartzTorrent
       dest = @@dest
       if dest
         if dest.downcase == 'stdout'
-          dest = Outputter.stdout
+          dest = Log4r::Outputter.stdout
         elsif dest.downcase == 'stderr' 
-          dest = Outputter.stderr
+          dest = Log4r::Outputter.stderr
         else
-          dest = RollingFileOutputter.new('outputter', {filename: dest, maxsize: @@maxLogSize, max_backups: @@maxOldLogs})
+          dest = Log4r::RollingFileOutputter.new('outputter', {filename: dest, maxsize: @@maxLogSize, max_backups: @@maxOldLogs})
         end
       end
       @@outputter = dest
@@ -48,11 +47,11 @@ module QuartzTorrent
 
     def self.getLogger(name)
       if ! @@outputter
-        Logger.root
+        Log4r::Logger.root
       else
-        logger = Logger[name]
+        logger = Log4r::Logger[name]
         if ! logger
-          logger = Logger.new name
+          logger = Log4r::Logger.new name
           logger.level = @@defaultLevel
           logger.outputters = @@outputter
         end
@@ -86,35 +85,35 @@ module QuartzTorrent
       if level
         if level.is_a? Symbol
           if level == :fatal
-            level = FATAL
+            level = Log4r::FATAL
           elsif level == :error
-            level = ERROR
+            level = Log4r::ERROR
           elsif level == :warn
-            level = WARN
+            level = Log4r::WARN
           elsif level == :info
-            level = INFO
+            level = Log4r::INFO
           elsif level == :debug
-            level = DEBUG
+            level = Log4r::DEBUG
           else
-            level = ERROR
+            level = Log4r::ERROR
           end
         else
           if level.downcase == 'fatal'
-            level = FATAL
+            level = Log4r::FATAL
           elsif level.downcase == 'error'
-            level = ERROR
+            level = Log4r::ERROR
           elsif level.downcase == 'warn'
-            level = WARN
+            level = Log4r::WARN
           elsif level.downcase == 'info'
-            level = INFO
+            level = Log4r::INFO
           elsif level.downcase == 'debug'
-            level = DEBUG
+            level = Log4r::DEBUG
           else
-            level = ERROR
+            level = Log4r::ERROR
           end
         end
       else
-        level = ERROR
+        level = Log4r::ERROR
       end
       level
     end
