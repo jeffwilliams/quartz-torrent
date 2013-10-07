@@ -170,6 +170,7 @@ module QuartzTorrent
         numWritten = 0
         while toWrite > 0
           numWritten = @io.write_nonblock(@buffer[0,toWrite])
+          raise Errno::EAGAIN if numWritten == 0
           @buffer = @buffer[numWritten,@buffer.length]
           toWrite -= numWritten
         end
@@ -178,6 +179,7 @@ module QuartzTorrent
           @io.seek @buffer.first[0], IO::SEEK_SET
           while @buffer.first[1].length > 0
             numWritten = @io.write_nonblock(@buffer.first[1])
+            raise Errno::EAGAIN if numWritten == 0
             @buffer.first[1] = @buffer.first[1][numWritten,@buffer.first[1].length]
           end
           # This chunk has been fully written. Remove it
@@ -913,6 +915,7 @@ module QuartzTorrent
           raise $!
         end
       end
+
     end
 
   end
