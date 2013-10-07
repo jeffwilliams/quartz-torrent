@@ -18,3 +18,7 @@ Rake::RDocTask.new do |rd|
   #rd.rdoc_files.include("README.rdoc", "lib/**/*.rb")
   rd.rdoc_files.include("lib/**/*.rb")
 end
+
+task :devinstall do
+  system "sudo gem install quartz_torrent-0.0.1.gem --ignore-dependencies --no-rdoc --no-ri"
+end
