@@ -40,24 +40,29 @@ module QuartzTorrent
     true
   end
 
-  def self.logBacktraces
-    logger = LogManager.getLogger("util")
+  def self.logBacktraces(io)
+    logger = nil
+    logger = LogManager.getLogger("util") if ! io
+    isLinux = RUBY_PLATFORM.downcase.include?("linux")
 
     Thread.list.each do |thread|
       lwpid = ""
-      if thread[:lwpid]
-        lwpid = " [lwpid #{thread[:lwpid]}]"
-      end
 
-      logger.error "Thread #{thread[:name]} #{thread.object_id}#{lwpid}: #{thread.status}\n" + thread.backtrace.join("\n")
+      Thread.current[:lwpid] = syscall(SYSCALL_GETTID) if ! thread[:lwpid] && isLinux
+      lwpid = " [lwpid #{thread[:lwpid]}]" if thread[:lwpid]
+
+      msg = "Thread #{thread[:name]} #{thread.object_id}#{lwpid}: #{thread.status}\n  " + thread.backtrace.join("\n  ")
+      if io
+        io.puts msg
+      else
+        logger.error msg
+      end
     end
   end
 
   # Method to set a few thread-local variables useful in debugging. Threads should call this when started.
   def self.initThread(name)
     Thread.current[:name] = name
-    isLinux = RUBY_PLATFORM.downcase.include?("linux")
-    Thread.current[:lwpid] = syscall(SYSCALL_GETTID) if isLinux
   end
 
 end
