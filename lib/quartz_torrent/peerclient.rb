@@ -105,8 +105,6 @@ module QuartzTorrent
       fillFrom(torrentData)
       @torrentData = torrentData
       @peerClientHandler = peerClientHandler
-      @downloadRateLimit = nil
-      @uploadRateLimit = nil
     end
 
     # Torrent Metainfo.info struct. This is nil if the torrent has no metadata and we haven't downloaded it yet
@@ -134,6 +132,7 @@ module QuartzTorrent
     # How much of the metainfo info we have downloaded in bytes. This is only set when the state is :downloading_metainfo
     attr_reader :metainfoCompletedLength
     attr_reader :paused
+    attr_accessor :ratio
   
     # Update the data in this TorrentDataDelegate from the torrentData
     # object that it was created from. TODO: What if that torrentData is now gone?
@@ -191,6 +190,7 @@ module QuartzTorrent
 
       @downloadRateLimit = torrentData.downRateLimit.unitsPerSecond if torrentData.downRateLimit
       @uploadRateLimit = torrentData.upRateLimit.unitsPerSecond if torrentData.upRateLimit
+      @ratio = torrentData.ratio
     end
 
     def buildPeersList(torrentData)
