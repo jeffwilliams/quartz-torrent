@@ -379,7 +379,11 @@ module QuartzTorrent
       end
       
       if bytesPerSecond
-        torrentData.downRateLimit = RateLimit.new(bytesPerSecond, 2*bytesPerSecond, 0)
+        if ! torrentData.downRateLimit
+          torrentData.downRateLimit = RateLimit.new(bytesPerSecond, 2*bytesPerSecond, 0)
+        else
+          torrentData.downRateLimit.unitsPerSecond = bytesPerSecond
+        end
       else
         torrentData.downRateLimit = nil
       end
@@ -394,7 +398,11 @@ module QuartzTorrent
       end
 
       if bytesPerSecond
-        torrentData.upRateLimit = RateLimit.new(bytesPerSecond, 2*bytesPerSecond, 0)
+        if ! torrentData.upRateLimit
+          torrentData.upRateLimit = RateLimit.new(bytesPerSecond, 2*bytesPerSecond, 0)
+        else
+          torrentData.upRateLimit.unitsPerSecond = bytesPerSecond
+        end
       else
         torrentData.upRateLimit = nil
       end

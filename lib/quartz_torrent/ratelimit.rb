@@ -18,6 +18,9 @@ module QuartzTorrent
     end
   
     attr_reader :unitsPerSecond
+    def unitsPerSecond=(v)
+      @unitsPerSecond = v.to_f
+    end
 
     # How much is in the pool.
     def avail
