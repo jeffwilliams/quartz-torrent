@@ -502,6 +502,8 @@ module QuartzTorrent
         end
       end
 
+      @logger.info "Reactor shutting down"
+
       # Event loop finished
       @ioInfo.each do |k,v|
         k.close
@@ -800,7 +802,7 @@ module QuartzTorrent
     def disposeIo(io)
       def closeIo(io)
         begin
-          io.close if io.closed?
+          io.close if !io.closed?
         rescue
           @logger.warn "Closing IO failed with exception #{$!}"
           @logger.debug $!.backtrace.join("\n")
