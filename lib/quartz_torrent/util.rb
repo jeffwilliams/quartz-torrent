@@ -40,6 +40,34 @@ module QuartzTorrent
     true
   end
 
+  # Store Linux Lightweight process ids (LWPID) on each thread.
+  # If this is called a while before logBacktraces the backtraces will
+  # include lwpids.
+  def self.setThreadLwpid(thread = nil)
+    # This function works by calling the GETTID system call in Linux. That
+    # system call must be called in the thread that we want to get the lwpid of,
+    # but the user may not have created those threads and so can't call the system call
+    # in those threads (think Sinatra). To get around this this function runs code in the
+    # thread by adding a trace function to the thread, and on the first traced operation
+    # stores the LWPID on the thread and unregisters itself.    
+
+    isLinux = RUBY_PLATFORM.downcase.include?("linux")
+    return if !isLinux
+
+    tracer = Proc.new do
+      Thread.current[:lwpid] = syscall(SYSCALL_GETTID) if ! Thread.current[:lwpid] && isLinux
+      Thread.current.set_trace_func(nil)
+    end
+    
+    if thread
+      thread.set_trace_func(tracer)
+    else
+      Thread.list.each { |thread| thread.set_trace_func(tracer) }
+    end
+  end
+
+  # Log backtraces of all threads currently running. The threads are logged to the 
+  # passed io, or if that's nil they are written to the logger named 'util' at error level.
   def self.logBacktraces(io)
     logger = nil
     logger = LogManager.getLogger("util") if ! io
@@ -48,10 +76,10 @@ module QuartzTorrent
     Thread.list.each do |thread|
       lwpid = ""
 
-      Thread.current[:lwpid] = syscall(SYSCALL_GETTID) if ! thread[:lwpid] && isLinux
+      setThreadLwpid thread if ! thread[:lwpid] && isLinux
       lwpid = " [lwpid #{thread[:lwpid]}]" if thread[:lwpid]
 
-      msg = "Thread #{thread[:name]} #{thread.object_id}#{lwpid}: #{thread.status}\n  " + thread.backtrace.join("\n  ")
+      msg = "Thread #{thread[:name]} #{thread.object_id}#{lwpid}: #{thread.status}\n  " + (thread.backtrace ? thread.backtrace.join("\n  ") : "no backtrace")
       if io
         io.puts msg
       else
