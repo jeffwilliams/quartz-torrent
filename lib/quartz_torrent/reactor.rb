@@ -270,6 +270,10 @@ module QuartzTorrent
     def close
       @io.close
     end
+
+    def closed?
+      @io.closed?
+    end
   end
 
   # An IoFacade that doesn't allow reading.
@@ -611,7 +615,12 @@ module QuartzTorrent
       readset = []
       writeset = []
       outputBufferNotEmptyCount = 0
+      ioToRemove = []
       @ioInfo.each do |k,v|
+        if k.closed?
+          ioToRemove.push k
+          next
+        end
         readset.push k if v.state != :connecting && ! @stopped && (v.readRateLimit.nil? || v.readRateLimit.avail >= 1.0)
         @logger.debug "eventloop: IO metainfo=#{v.metainfo} added to read set" if @logger
         writeset.push k if (!v.outputBuffer.empty? || v.state == :connecting) && v.state != :listening && (v.writeRateLimit.nil? || v.writeRateLimit.avail >= 1.0)
@@ -702,6 +711,11 @@ module QuartzTorrent
         end
       end
 
+      ioToRemove.each do |io|
+        ioInfo = @ioInfo.delete io
+        @logger.warn "Detected an IO that was closed but still in the list of selectable IO. Metadata = #{ioInfo.metainfo}"
+      end
+
       :continue
     end
 
@@ -784,33 +798,30 @@ module QuartzTorrent
     end
 
     def disposeIo(io)
-      if io.is_a?(IOInfo)
+      def closeIo(io)
         begin
-          # Flush any output
-          begin
-            @logger.debug "disposeIo: flushing data" if @logger
-            io.outputBuffer.flush
-          rescue
-          end
-          io.io.close
+          io.close if io.closed?
         rescue
           @logger.warn "Closing IO failed with exception #{$!}"
+          @logger.debug $!.backtrace.join("\n")
         end
+      end
+  
+      if io.is_a?(IOInfo)
+        # Flush any output
+        begin
+          @logger.debug "disposeIo: flushing data" if @logger
+          io.outputBuffer.flush
+        rescue
+        end
+        
+        closeIo(io.io)
         @ioInfo.delete io.io
       elsif io.is_a?(IoFacade)
-        begin
-          io.close
-        rescue
-          @logger.warn "Closing IO failed with exception #{$!}"
-        end
-
+        closeIo(io)
         io.removeFromIOHash(@ioInfo)
       else
-        begin
-          io.close
-        rescue
-          @logger.warn "Closing IO failed with exception #{$!}"
-        end
+        closeIo(io)
         @ioInfo.delete io
       end
     end
