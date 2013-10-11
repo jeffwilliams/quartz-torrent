@@ -40,13 +40,11 @@ And a specific test case in a test using:
 
 To-Do
 -----
-  - Need to move pausing torrents to happen on a timer in the reactor thread like removing a torrent does. 
   - Start a peerclient with the full torrent. Connect with another peerclient and start downloading, then pause.
     Finally unpause. The "server" peerclient will refuse the connections to re-establish because it believes the
     peer is already connected.
   - Improve CPU usage. 
   - Implement endgame strategy and support Cancel messages.
-  - Change method naming scheme to snake case from camel case.
   - Refactor Metadata.Info into it's own independent class.
   - Documentation
   - In peerclient, prefix log messages with torrent infohash, or (truncated) torrent name

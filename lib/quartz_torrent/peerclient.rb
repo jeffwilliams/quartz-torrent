@@ -272,106 +272,11 @@ module QuartzTorrent
       @reactor.scheduleTimer(0, [:removetorrent, infoHash, deleteFiles], false, true)
     end
 
-    def handleRemoveTorrent(infoHash, deleteFiles)
-      torrentData = @torrentData.delete infoHash
-      if ! torrentData
-        @logger.warn "Asked to remove a non-existent torrent #{QuartzTorrent.bytesToHex(infoHash)}"
-        return
-      end
-      @logger.info "Removing torrent #{QuartzTorrent.bytesToHex(infoHash)} and #{deleteFiles ? "will" : "wont"} delete downloaded files."
-
-      @logger.info "Removing torrent: no torrentData.metainfoRequestTimer" if ! torrentData.metainfoRequestTimer
-      @logger.info "Removing torrent: no torrentData.managePeersTimer" if ! torrentData.managePeersTimer 
-      @logger.info "Removing torrent: no torrentData.checkMetadataPieceManagerTimer" if ! torrentData.checkMetadataPieceManagerTimer 
-      @logger.info "Removing torrent: no torrentData.checkPieceManagerTimer" if ! torrentData.checkPieceManagerTimer 
-      @logger.info "Removing torrent: no torrentData.requestBlocksTimer" if ! torrentData.requestBlocksTimer 
-        
-
-      # Stop all timers
-      cancelTimer torrentData.metainfoRequestTimer if torrentData.metainfoRequestTimer
-      cancelTimer torrentData.managePeersTimer if torrentData.managePeersTimer
-      cancelTimer torrentData.checkMetadataPieceManagerTimer if torrentData.checkMetadataPieceManagerTimer
-      cancelTimer torrentData.checkPieceManagerTimer if torrentData.checkPieceManagerTimer
-      cancelTimer torrentData.requestBlocksTimer if torrentData.requestBlocksTimer
-  
-      torrentData.trackerClient.removePeersChangedListener(torrentData.peerChangeListener)
-
-      # Remove all the peers for this torrent.
-      torrentData.peers.all.each do |peer|
-        if peer.state != :disconnected
-          # Close socket 
-          withPeersIo(peer, "when removing torrent") do |io|
-            setPeerDisconnected(peer)
-            close(io)
-            @logger.debug "Closing connection to peer #{peer}"
-          end
-        end
-        torrentData.peers.delete peer
-      end
-
-      # Stop tracker client
-      torrentData.trackerClient.stop if torrentData.trackerClient
-
-      # Stop PieceManagers
-      torrentData.pieceManager.stop if torrentData.pieceManager
-      torrentData.metainfoPieceState.stop if torrentData.metainfoPieceState
-
-      # Remove metainfo file if it exists
-      begin
-        torrentData.metainfoPieceState.remove if torrentData.metainfoPieceState
-      rescue
-        @logger.warn "Deleting metainfo file for torrent #{QuartzTorrent.bytesToHex(infoHash)} failed: #{$!}"  
-      end
-
-      if deleteFiles
-        if torrentData.info
-          begin
-            path = @baseDirectory + File::SEPARATOR + torrentData.info.name
-            if File.exists? path
-              FileUtils.rm_r path
-              @logger.info "Deleted #{path}"
-            else
-              @logger.warn "Deleting '#{path}' for torrent #{QuartzTorrent.bytesToHex(infoHash)} failed: #{$!}"  
-            end
-          rescue
-            @logger.warn "When removing torrent #{QuartzTorrent.bytesToHex(infoHash)} deleting '#{path}' failed because it doesn't exist"  
-          end
-        end
-      end
-    end
-
     # Pause or unpause the specified torrent.
     def setPaused(infoHash, value)
-      torrentData = @torrentData[infoHash]
-      if ! torrentData
-        @logger.warn "Asked to pause a non-existent torrent #{QuartzTorrent.bytesToHex(infoHash)}"
-        return
-      end
-
-      return if torrentData.paused == value
-
-      if value
-        torrentData.paused = true
-
-        # Disconnect from all peers so we won't reply to any messages.
-        torrentData.peers.all.each do |peer|
-          if peer.state != :disconnected
-            # Close socket 
-            withPeersIo(peer, "when removing torrent") do |io|
-              setPeerDisconnected(peer)
-              close(io)
-            end
-          end
-          torrentData.peers.delete peer
-        end 
-      else
-        torrentData.paused = false
-  
-        # Get our list of peers and start connecting right away
-        # Non-recurring and immediate timer
-        torrentData.managePeersTimer = 
-          @reactor.scheduleTimer(@managePeersPeriod, [:manage_peers, torrentData.infoHash], false, true)
-      end
+      # Can't do this right now, since it could be in use by an event handler. Use an immediate, non-recurring timer instead.
+      @logger.info "Scheduling immediate timer to pause torrent #{QuartzTorrent.bytesToHex(infoHash)}."
+      @reactor.scheduleTimer(0, [:pausetorrent, infoHash, value], false, true)
     end
 
     # Set the download rate limit. Pass nil as the bytesPerSecond to disable the limit.
@@ -650,6 +555,8 @@ module QuartzTorrent
         handleHandshakeTimeout(metadata[1])
       elsif metadata.is_a?(Array) && metadata[0] == :removetorrent
         handleRemoveTorrent(metadata[1], metadata[2])
+      elsif metadata.is_a?(Array) && metadata[0] == :pausetorrent
+        handlePause(metadata[1], metadata[2])
       elsif metadata.is_a?(Array) && metadata[0] == :get_torrent_data
         @torrentData.each do |k,v|
           begin
@@ -1419,7 +1326,7 @@ module QuartzTorrent
   
         if classifiedPeers.disconnectedPeers.size > 0
           torrentData.peers.delete classifiedPeers.disconnectedPeers.pop
-          addPeer trackerPeer
+          addPeer.call trackerPeer
           true
         else
           false
@@ -1443,6 +1350,109 @@ module QuartzTorrent
           @logger.debug "Adding tracker peer #{p} to peers list"
           break if ! addProc.call(p)
         end
+      end
+    end
+
+    # Remove a torrent that we are downloading.
+    def handleRemoveTorrent(infoHash, deleteFiles)
+      torrentData = @torrentData.delete infoHash
+      if ! torrentData
+        @logger.warn "Asked to remove a non-existent torrent #{QuartzTorrent.bytesToHex(infoHash)}"
+        return
+      end
+      @logger.info "Removing torrent #{QuartzTorrent.bytesToHex(infoHash)} and #{deleteFiles ? "will" : "wont"} delete downloaded files."
+
+      @logger.info "Removing torrent: no torrentData.metainfoRequestTimer" if ! torrentData.metainfoRequestTimer
+      @logger.info "Removing torrent: no torrentData.managePeersTimer" if ! torrentData.managePeersTimer 
+      @logger.info "Removing torrent: no torrentData.checkMetadataPieceManagerTimer" if ! torrentData.checkMetadataPieceManagerTimer 
+      @logger.info "Removing torrent: no torrentData.checkPieceManagerTimer" if ! torrentData.checkPieceManagerTimer 
+      @logger.info "Removing torrent: no torrentData.requestBlocksTimer" if ! torrentData.requestBlocksTimer 
+
+
+      # Stop all timers
+      cancelTimer torrentData.metainfoRequestTimer if torrentData.metainfoRequestTimer
+      cancelTimer torrentData.managePeersTimer if torrentData.managePeersTimer
+      cancelTimer torrentData.checkMetadataPieceManagerTimer if torrentData.checkMetadataPieceManagerTimer
+      cancelTimer torrentData.checkPieceManagerTimer if torrentData.checkPieceManagerTimer
+      cancelTimer torrentData.requestBlocksTimer if torrentData.requestBlocksTimer
+
+      torrentData.trackerClient.removePeersChangedListener(torrentData.peerChangeListener)
+
+      # Remove all the peers for this torrent.
+      torrentData.peers.all.each do |peer|
+        if peer.state != :disconnected
+          # Close socket 
+          withPeersIo(peer, "when removing torrent") do |io|
+            setPeerDisconnected(peer)
+            close(io)
+            @logger.debug "Closing connection to peer #{peer}"
+          end
+        end
+        torrentData.peers.delete peer
+      end
+
+      # Stop tracker client
+      torrentData.trackerClient.stop if torrentData.trackerClient
+
+      # Stop PieceManagers
+      torrentData.pieceManager.stop if torrentData.pieceManager
+      torrentData.metainfoPieceState.stop if torrentData.metainfoPieceState
+
+      # Remove metainfo file if it exists
+      begin
+        torrentData.metainfoPieceState.remove if torrentData.metainfoPieceState
+      rescue
+        @logger.warn "Deleting metainfo file for torrent #{QuartzTorrent.bytesToHex(infoHash)} failed: #{$!}"  
+      end
+
+      if deleteFiles
+        if torrentData.info
+          begin
+            path = @baseDirectory + File::SEPARATOR + torrentData.info.name
+            if File.exists? path
+              FileUtils.rm_r path
+              @logger.info "Deleted #{path}"
+            else
+              @logger.warn "Deleting '#{path}' for torrent #{QuartzTorrent.bytesToHex(infoHash)} failed: #{$!}"  
+            end
+          rescue
+            @logger.warn "When removing torrent #{QuartzTorrent.bytesToHex(infoHash)} deleting '#{path}' failed because it doesn't exist"  
+          end
+        end
+      end
+    end
+
+    # Pause or unpause a torrent that we are downloading.
+    def handlePause(infoHash, value)
+      torrentData = @torrentData[infoHash]
+      if ! torrentData
+        @logger.warn "Asked to pause a non-existent torrent #{QuartzTorrent.bytesToHex(infoHash)}"
+        return
+      end
+
+      return if torrentData.paused == value
+
+      if value
+        torrentData.paused = true
+
+        # Disconnect from all peers so we won't reply to any messages.
+        torrentData.peers.all.each do |peer|
+          if peer.state != :disconnected
+            # Close socket 
+            withPeersIo(peer, "when removing torrent") do |io|
+              setPeerDisconnected(peer)
+              close(io)
+            end
+          end
+          torrentData.peers.delete peer
+        end 
+      else
+        torrentData.paused = false
+
+        # Get our list of peers and start connecting right away
+        # Non-recurring and immediate timer
+        torrentData.managePeersTimer = 
+          @reactor.scheduleTimer(@managePeersPeriod, [:manage_peers, torrentData.infoHash], false, true)
       end
     end
 
