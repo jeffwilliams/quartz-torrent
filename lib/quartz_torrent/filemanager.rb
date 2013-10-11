@@ -301,6 +301,9 @@ module QuartzTorrent
       @requestId = 0
       @logger = LogManager.getLogger("piecemanager")
       @torrentDataLength = torrinfo.dataLength
+      @startedCondition = ConditionVariable.new
+      @startedMutex = Mutex.new
+      @state = :before_start
       startThread
     end
 
@@ -314,6 +317,7 @@ module QuartzTorrent
     # they shouldn't be called by multiple threads concurrently.
     def readBlock(pieceIndex, offset, length)
       id = returnAndIncrRequestId
+      return id if @state == :after_stop
       @requests.push [id, :read_block, pieceIndex, offset, length]
       @requestsSemaphore.signal
       id
@@ -322,6 +326,7 @@ module QuartzTorrent
     # Write a block to the torrent asynchronously. 
     def writeBlock(pieceIndex, offset, block)
       id = returnAndIncrRequestId
+      return id if @state == :after_stop
       @requests.push [id, :write_block, pieceIndex, offset, block]
       @requestsSemaphore.signal
       id
@@ -329,6 +334,7 @@ module QuartzTorrent
 
     def readPiece(pieceIndex)
       id = returnAndIncrRequestId
+      return id if @state == :after_stop
       @requests.push [id, :read_piece, pieceIndex]
       @requestsSemaphore.signal
       id
@@ -340,6 +346,7 @@ module QuartzTorrent
     # the complete pieces.
     def findExistingPieces
       id = returnAndIncrRequestId
+      return id if @state == :after_stop
       @requests.push [id, :find_existing]
       @requestsSemaphore.signal
       id
@@ -350,6 +357,7 @@ module QuartzTorrent
     # set to the piece index.
     def checkPieceHash(pieceIndex)
       id = returnAndIncrRequestId
+      return id if @state == :after_stop
       @requests.push [id, :hash_piece, pieceIndex]
       @requestsSemaphore.signal
       id
@@ -358,6 +366,7 @@ module QuartzTorrent
     # Flush to disk. The result for this operation is always successful.
     def flush()
       id = returnAndIncrRequestId
+      return id if @state == :after_stop
       @requests.push [id, :flush]
       @requestsSemaphore.signal
       id
@@ -388,6 +397,8 @@ module QuartzTorrent
     # Wait until the next result is ready. If this method is used it must always
     # be called before nextResult. This is mostly useful for testing.
     def wait
+      waitUntilStarted
+
       @resultsSemaphore.wait
     end
 
@@ -397,12 +408,23 @@ module QuartzTorrent
       ! @results.empty?
     end
 
+    def stop
+      waitUntilStarted
+      @state = :after_stop
+      id = returnAndIncrRequestId
+      @requests.push [id, :stop]
+      @requestsSemaphore.signal
+    end
+
     private
     def startThread
-      @stopped = false
       @thread = Thread.new do
+        @startedMutex.synchronize do 
+          @state = :running
+          @startedCondition.broadcast
+        end
         QuartzTorrent.initThread("piecemanager")
-        while ! @stopped
+        while @state == :running
           begin
             @requestsSemaphore.wait
 
@@ -428,6 +450,8 @@ module QuartzTorrent
               elsif req[1] == :flush
                 @pieceIO.flush
                 result = true
+              elsif req[1] == :stop
+                result = true
               end
               result = Result.new(req[0], true, result) if ! result.is_a?(Result)
             rescue
@@ -448,6 +472,12 @@ module QuartzTorrent
             @logger.error "#{$!.backtrace.join("\n")}"
           end
         end
+      end
+    end
+
+    def waitUntilStarted
+      if @state == :before_start
+        @startedMutex.synchronize{ @startedCondition.wait(@startedMutex) if @state == :before_start }
       end
     end
 

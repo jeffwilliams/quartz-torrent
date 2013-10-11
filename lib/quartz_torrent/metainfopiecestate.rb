@@ -239,6 +239,10 @@ module QuartzTorrent
       FileUtils.rm path
     end
 
+    # Stop the underlying PieceManager.
+    def stop
+      @pieceManager.stop
+    end
 
     private
     # Remove any pending requests after a timeout.

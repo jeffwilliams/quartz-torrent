@@ -241,8 +241,6 @@ module QuartzTorrent
       end
 
       if info
-        torrentData.pieceManager = QuartzTorrent::PieceManager.new(@baseDirectory, info)
-
         startCheckingPieces torrentData
       else
         # Request the metainfo from peers.
@@ -313,6 +311,10 @@ module QuartzTorrent
 
       # Stop tracker client
       torrentData.trackerClient.stop if torrentData.trackerClient
+
+      # Stop PieceManagers
+      torrentData.pieceManager.stop if torrentData.pieceManager
+      torrentData.metainfoPieceState.stop if torrentData.metainfoPieceState
 
       # Remove metainfo file if it exists
       begin
@@ -828,19 +830,7 @@ module QuartzTorrent
       trackerclient = torrentData.trackerClient
 
       # Update our internal peer list for this torrent from the tracker client
-      trackerclient.peers.each do |p|
-        break if torrentData.peers.size >= @maxPeerCount
-      
-        # Don't treat ourself as a peer.
-        next if p.id && p.id == trackerclient.peerId
-
-        if ! torrentData.peers.findByAddr(p.ip, p.port)
-          @logger.debug "Adding tracker peer #{p} to peers list"
-          peer = Peer.new(p)
-          peer.infoHash = infoHash
-          torrentData.peers.add peer
-        end
-      end
+      getPeersFromTracker(torrentData, infoHash)
 
       classifiedPeers = ClassifiedPeers.new torrentData.peers.all
 
@@ -1043,7 +1033,6 @@ module QuartzTorrent
         info = MetainfoPieceState.downloaded(@baseDirectory, torrentData.infoHash)
         if info
           torrentData.info = info
-          torrentData.pieceManager = QuartzTorrent::PieceManager.new(@baseDirectory, info)
           startCheckingPieces torrentData
         else
           @logger.error "Metadata download is complete but reading the metadata failed"
@@ -1410,12 +1399,53 @@ module QuartzTorrent
       begin
         peer.peerMsgSerializer.serializeTo(msg, io)
       rescue
-        e = Exception.new "Sending message to peer #{peer} failed: #{$!.message}"
-        e.set_backtrace $!.backtrace
-        raise e
+        @logger.warn "Sending message to peer #{peer} failed: #{$!.message}"
       end
       msg.serializeTo io
     end
+
+    # Update our internal peer list for this torrent from the tracker client
+    def getPeersFromTracker(torrentData, infoHash)
+      addPeer = Proc.new do |trackerPeer|
+        peer = Peer.new(trackerPeer)
+        peer.infoHash = infoHash
+        torrentData.peers.add peer
+        true
+      end
+
+      classifiedPeers = nil
+      replaceDisconnectedPeer = Proc.new do |trackerPeer|
+        classifiedPeers = ClassifiedPeers.new(torrentData.peers.all) if ! classifiedPeers
+  
+        if classifiedPeers.disconnectedPeers.size > 0
+          torrentData.peers.delete classifiedPeers.disconnectedPeers.pop
+          addPeer trackerPeer
+          true
+        else
+          false
+        end
+      end
+
+      trackerclient = torrentData.trackerClient 
+    
+      addProc = addPeer
+      flipped = false
+      trackerclient.peers.each do |p|
+        if ! flipped && torrentData.peers.size >= @maxPeerCount
+          addProc = replaceDisconnectedPeer
+          flipped = true
+        end
+      
+        # Don't treat ourself as a peer.
+        next if p.id && p.id == trackerclient.peerId
+            
+        if ! torrentData.peers.findByAddr(p.ip, p.port)
+          @logger.debug "Adding tracker peer #{p} to peers list"
+          break if ! addProc.call(p)
+        end
+      end
+    end
+
   end
 
   # Represents a client that talks to bittorrent peers. This is the main class used to download and upload

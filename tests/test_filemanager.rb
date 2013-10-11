@@ -102,7 +102,10 @@ class TestFileManager < MiniTest::Unit::TestCase
 
   # Test that an empty torrent download directory is really treated as empty.
   def testEmptyTorrent
-    LogManager.logFile = "stdout"
+    LogManager.setup do
+      setLogfile "stdout"
+    end
+
     LogManager.setLevel "piecemanager", :debug
     metainfo = QuartzTorrent::Metainfo.createFromFile("#{TestDataDir}/testtorrent.torrent")
     manager = PieceManager.new(TestsDir, metainfo.info)
@@ -114,7 +117,9 @@ class TestFileManager < MiniTest::Unit::TestCase
 
   # Test that a completed torrent directory has all the data.
   def testCompleteTorrent
-    LogManager.logFile = "stdout"
+    LogManager.setup do
+      setLogfile "stdout"
+    end
     LogManager.setLevel "piecemanager", :debug
     metainfo = QuartzTorrent::Metainfo.createFromFile("#{TestDataDir}/testtorrent.torrent")
     # Use tests/data as the base directory. Since the torrent contains testtorrent/file1 and testtorrent/file2,
@@ -130,7 +135,9 @@ class TestFileManager < MiniTest::Unit::TestCase
   end
 
   def testCopy
-    LogManager.logFile = "stdout"
+    LogManager.setup do
+      setLogfile "stdout"
+    end
     LogManager.setLevel "piecemanager", :debug
     LogManager.setLevel "piecemapper", :debug
     metainfo = QuartzTorrent::Metainfo.createFromFile("#{TestDataDir}/testtorrent.torrent")
@@ -177,6 +184,21 @@ class TestFileManager < MiniTest::Unit::TestCase
     puts "Bitfield: " + result.data.to_s
     assert_equal true, result.data.allSet?, "Copying using PieceManager failed: complete torrent has not all pieces completed."
 
+  end
+
+  def testStop
+    LogManager.setup do
+      setLogfile "stdout"
+    end
+    LogManager.setLevel "piecemanager", :debug
+    LogManager.setLevel "piecemapper", :debug
+    metainfo = QuartzTorrent::Metainfo.createFromFile("#{TestDataDir}/testtorrent.torrent")
+    threadcount = Thread.list.size
+    manager = PieceManager.new(TestDataTmpDir, metainfo.info)
+    assert_equal threadcount+1, Thread.list.size, "After starting PieceManager I expected to have 2 threads running, but there are #{Thread.list.size}. #{Thread.list.size > 2 ? "It seems like threads from other tests are still running... try this one in isolation": "Maybe test has a race condition."}"
+    manager.stop
+    manager.wait
+    assert_equal threadcount, Thread.list.size
   end
 
 end

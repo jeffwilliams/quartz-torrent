@@ -26,7 +26,7 @@ end
 
 class TestBlockstate < MiniTest::Unit::TestCase
   def setup
-    LogManager.logFile = "stdout"
+    LogManager.setup { setLogfile "stdout" }
     LogManager.setLevel "blockstate", :debug
   end
 

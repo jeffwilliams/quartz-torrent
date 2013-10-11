@@ -21,7 +21,7 @@ class TestMetainfoPieceState < MiniTest::Unit::TestCase
 
   def testWriting
 
-    LogManager.logFile = "stdout"
+    LogManager.setup { setLogfile "stdout" }
     LogManager.setLevel "metainfo_piece_state", :debug
 
     infoHash = Array.new(20).fill{ rand(256) }.pack "C*"
@@ -56,7 +56,7 @@ class TestMetainfoPieceState < MiniTest::Unit::TestCase
   end
 
   def testReading
-    LogManager.logFile = "stdout"
+    LogManager.setup { setLogfile "stdout" }
     LogManager.setLevel "metainfo_piece_state", :debug
 
     metainfo = QuartzTorrent::Metainfo.createFromFile("#{TestDataDir}/testtorrent.torrent")
@@ -72,7 +72,7 @@ class TestMetainfoPieceState < MiniTest::Unit::TestCase
   end
   
   def testAlreadyExists
-    LogManager.logFile = "stdout"
+    LogManager.setup { setLogfile "stdout" }
     LogManager.setLevel "metainfo_piece_state", :debug
 
     metainfo = QuartzTorrent::Metainfo.createFromFile("#{TestDataDir}/testtorrent.torrent")

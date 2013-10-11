@@ -35,9 +35,6 @@ class TestPeerManager < MiniTest::Unit::TestCase
       ipnum += 1
     end
 
-    #LogManager.logFile = 'stdout'
-    #LogManager.setLevel "peer_manager", :debug
-
     # Make 10 peers interested
     peers.first(10).each do |peer|
       peer.peerInterested = true
