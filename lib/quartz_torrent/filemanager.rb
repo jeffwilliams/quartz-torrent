@@ -253,7 +253,8 @@ module QuartzTorrent
     end
   end
 
-  # A class that spawns a thread for performing PieceIO operations asynchronously.
+  # A class that spawns a thread for performing PieceIO operations asynchronously. This class is what is used to 
+  # read and write blocks of a torrent.
   class PieceManager
     # The result of an asynchronous operation preformed by the PieceManager.
     class Result
@@ -332,6 +333,7 @@ module QuartzTorrent
       id
     end
 
+    # Read a block of the torrent asynchronously. 
     def readPiece(pieceIndex)
       id = returnAndIncrRequestId
       return id if @state == :after_stop
@@ -408,6 +410,7 @@ module QuartzTorrent
       ! @results.empty?
     end
 
+    # Stop the PieceManager.
     def stop
       waitUntilStarted
       @state = :after_stop

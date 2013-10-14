@@ -14,13 +14,23 @@ module QuartzTorrent
     @@maxLogSize = 1048576
     @@dest = nil
 
+    # Initialize logging based on environment variables. The QUARTZ_TORRENT_LOGFILE variable controls where logging is written,
+    # and should be either a file path, 'stdout' or 'stderr'.
     def self.initializeFromEnv
       @@dest = ENV['QUARTZ_TORRENT_LOGFILE']
       @@defaultLevel = parseLogLevel(ENV['QUARTZ_TORRENT_LOGLEVEL'])
   
     end
 
-    # Initialize the log manager using some defaults.
+    # Initialize the log manager. This method expects a block, and the block may call the following methods:
+    #
+    #   setLogfile(path)
+    #   setDefaultLevel(level)
+    #   setMaxOldLogs(num)
+    #   setMaxLogSize(size)
+    #
+    # In the above methods, `path` defines where logging is written, and should be either a file path, 'stdout' or 'stderr';
+    # `level` is a logging level as per setLevel, `num` is an integer, and `size` is a value in bytes.
     def self.setup(&block)
       self.instance_eval &block
 
@@ -45,6 +55,7 @@ module QuartzTorrent
       logger.level = level
     end
 
+    # Get the logger with the specified name. Currently this returns a log4r Logger.
     def self.getLogger(name)
       if ! @@outputter
         Log4r::Logger.root

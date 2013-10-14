@@ -110,28 +110,38 @@ module QuartzTorrent
     # Torrent Metainfo.info struct. This is nil if the torrent has no metadata and we haven't downloaded it yet
     # (i.e. a magnet link).
     attr_accessor :info
+    # Infohash of the torrent. This is binary data.
     attr_accessor :infoHash
     # Recommended display name for this torrent.
     attr_accessor :recommendedName
+    # Download rate in bytes/second
     attr_reader :downloadRate
+    # Upload rate in bytes/second
     attr_reader :uploadRate
     # Download rate limit in bytes/second if a limit is set, nil otherwise
     attr_reader :downloadRateLimit
     # Upload rate limit in bytes/second if a limit is set, nil otherwise
     attr_reader :uploadRateLimit
+    # Download rate limit in bytes/second if a limit is set, nil otherwise
     attr_reader :downloadRateDataOnly
     attr_reader :uploadRateDataOnly
+    # Count of completed bytes of the torrent
     attr_reader :completedBytes
+    # Array of peers for the torrent. These include connected, disconnected, and handshaking peers 
     attr_reader :peers
     # State of the torrent. This may be one of :downloading_metainfo, :error, :checking_pieces, :running, :downloading_metainfo, or :deleted.
     # The :deleted state indicates that the torrent that this TorrentDataDelegate refers to is no longer being managed by the peer client.
     attr_reader :state
+    # Bitfield representing which pieces of the torrent are completed.
     attr_reader :completePieceBitfield
     # Length of metainfo info in bytes. This is only set when the state is :downloading_metainfo
     attr_reader :metainfoLength
     # How much of the metainfo info we have downloaded in bytes. This is only set when the state is :downloading_metainfo
     attr_reader :metainfoCompletedLength
+    # Whether or not the torrent is paused.
     attr_reader :paused
+    # After we have completed downloading a torrent, we will continue to upload until we have 
+    # uploaded ratio * torrent_size bytes. If nil, no limit on upload.
     attr_accessor :ratio
   
     # Update the data in this TorrentDataDelegate from the torrentData
