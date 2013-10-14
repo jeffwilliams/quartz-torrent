@@ -1,5 +1,5 @@
 require 'rake/testtask'
-require 'rdoc/task'
+require 'yard'
 
 task :default => [:makegem]
 
@@ -13,10 +13,7 @@ Rake::TestTask.new do |t|
   t.verbose = true
 end
 
-Rake::RDocTask.new do |rd|
-  #rd.main = "README.rdoc"
-  #rd.rdoc_files.include("README.rdoc", "lib/**/*.rb")
-  rd.rdoc_files.include("lib/**/*.rb")
+YARD::Rake::YardocTask.new do |rd|
 end
 
 task :devinstall do

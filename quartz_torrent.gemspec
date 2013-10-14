@@ -22,4 +22,6 @@ Gem::Specification.new do |s|
   s.add_runtime_dependency "log4r", '~> 1.1'
 
   s.add_development_dependency "minitest"
+  s.add_development_dependency "yard"
+  s.add_development_dependency "redcarpet"
 end

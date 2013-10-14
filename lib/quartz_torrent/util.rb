@@ -15,6 +15,7 @@ module QuartzTorrent
   # This is Linux specific: system call number for gettid
   SYSCALL_GETTID = 224
 
+  # Return a hex string representing the bytes in the passed string.
   def self.bytesToHex(v, addSpaces = nil)
     s = ""
     v.each_byte{ |b|
@@ -26,10 +27,12 @@ module QuartzTorrent
     s
   end
 
+  # Given a hex string representing a sequence of bytes, convert it the the original bytes. Inverse of bytesToHex. 
   def self.hexToBytes(v)
     [v].pack "H*"
   end
 
+  # Shuffle the subset of elements in the given array between start and start+length-1 inclusive.
   def self.arrayShuffleRange!(array, start, length)
     raise "Invalid range" if start + length > array.size
 

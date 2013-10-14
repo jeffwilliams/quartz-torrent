@@ -1271,7 +1271,7 @@ module QuartzTorrent
     def sendHaves(torrentData, pieceIndex)
       @logger.debug "Sending Have messages to all connected peers for piece #{pieceIndex}"
       torrentData.peers.all.each do |peer|
-        next if peer.state != :established
+        next if peer.state != :established || peer.isUs
         withPeersIo(peer, "when sending Have message") do |io|
           msg = Have.new
           msg.pieceIndex = pieceIndex
@@ -1288,7 +1288,7 @@ module QuartzTorrent
       classifiedPeers = ClassifiedPeers.new torrentData.peers.all
       classifiedPeers.establishedPeers.each do |peer|
         # Don't bother sending uninterested message if we are already uninterested.
-        next if ! peer.amInterested
+        next if ! peer.amInterested || peer.isUs
         needFromPeer = needed.intersection(peer.bitfield)
         if needFromPeer.allClear?
           withPeersIo(peer, "when sending Uninterested message") do |io|
@@ -1462,7 +1462,7 @@ module QuartzTorrent
   # bittorrents.
   class PeerClient 
 
-    # Create a new PeerClient that will store torrents udner the specified baseDirectory.
+    # Create a new PeerClient that will save and load torrent data under the specified baseDirectory.
     def initialize(baseDirectory)
       @port = 9998
       @handler = nil
@@ -1573,6 +1573,7 @@ module QuartzTorrent
       @handler.setUploadRatio(infoHash, ratio)
     end
 
+    # Remove a currently running torrent
     def removeTorrent(infoHash, deleteFiles = false)
       @handler.removeTorrent(infoHash, deleteFiles)
     end

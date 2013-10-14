@@ -16,8 +16,11 @@ module QuartzTorrent
       @pool = @initialValue
       @time = Time.new
     end
-  
+ 
+    # Return the limit in units per second
     attr_reader :unitsPerSecond
+
+    # Set the limit in units per second.
     def unitsPerSecond=(v)
       @unitsPerSecond = v.to_f
     end
