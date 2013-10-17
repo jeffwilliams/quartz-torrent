@@ -1,6 +1,8 @@
 QuartzTorrent -- A Ruby Bittorrent Library 
 ==========================================
 
+[![Gem Version](https://badge.fury.io/rb/quartz_torrent.png)](http://badge.fury.io/rb/quartz\_torrent)
+
 Like the title says, a bittorrent library implemented in pure ruby. Currently 
 the library works, but is still alpha.
 
