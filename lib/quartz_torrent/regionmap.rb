@@ -1,4 +1,6 @@
 class Array
+  # Perform a binary search for a value in the array between the index low and high. This method expects a block. The
+  # block is passed a value v, and should return true if the target value is >= v, and false otherwise.
   def binsearch(low = nil, high = nil) 
     return nil if length == 0
     result = binsearch_index(low, high){ |x| yield x if !x.nil?}
@@ -6,6 +8,8 @@ class Array
     result
   end
 
+  # Perform a binary search for an index in the array between the index low and high. This method expects a block. The
+  # block is passed a value v, and should return true if the target value is >= v, and false otherwise.
   def binsearch_index(low = nil, high = nil) 
     return nil if length == 0
     low = 0 if !low

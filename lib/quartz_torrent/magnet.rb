@@ -20,6 +20,7 @@ module QuartzTorrent
 
     attr_reader :raw
 
+    # Returns true if the passed string is a magnet URI, false otherwise.
     def self.magnetURI?(str)
       str =~ @@regex
     end

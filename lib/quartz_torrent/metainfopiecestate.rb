@@ -118,6 +118,7 @@ module QuartzTorrent
       num*BlockSize + extra
     end
 
+    # Return true if the specified piece is completed. The piece is specified by index.
     def pieceCompleted?(pieceIndex)
       @completePieces.set? pieceIndex
     end
@@ -132,12 +133,15 @@ module QuartzTorrent
       raise "Metadata is not yet complete" if ! complete?
     end
 
+    # Save the specified piece to disk asynchronously.
     def savePiece(pieceIndex, data)
       id = @pieceManager.writeBlock pieceIndex, 0, data
       @pieceManagerRequests[id] = PieceManagerRequestMetadata.new(:write, pieceIndex)
       id
     end
 
+    # Read a piece from disk. This method is asynchronous; it returns a handle that can be later
+    # used to retreive the result.
     def readPiece(pieceIndex)
       length = BlockSize
       length = @lastPieceLength if pieceIndex == @numPieces - 1
@@ -180,6 +184,7 @@ module QuartzTorrent
       results
     end
 
+    # Return a list of torrent pieces that can still be requested. These are pieces that are not completed and are not requested.
     def findRequestablePieces
       piecesRequired = []
 
@@ -192,6 +197,8 @@ module QuartzTorrent
       piecesRequired
     end
 
+    # Return a list of peers from whom we can request pieces. These are peers for whom we have an established connection, and 
+    # are not marked as bad. See markPeerBad.
     def findRequestablePeers(classifiedPeers)
       result = []
 
@@ -213,6 +220,8 @@ module QuartzTorrent
       end
     end
 
+    # Mark the specified peer as 'bad'. We won't try requesting pieces from this peer. Used, for example, when
+    # a peer rejects our request for a metadata piece. 
     def markPeerBad(peer)
       @badPeers.add peer
     end
@@ -229,6 +238,7 @@ module QuartzTorrent
       @pieceManager.wait
     end
 
+    # Return the name of the file where this class will store the Torrent Info struct.
     def self.generateInfoFileName(infoHash)
       "#{QuartzTorrent.bytesToHex(infoHash)}.info"
     end
