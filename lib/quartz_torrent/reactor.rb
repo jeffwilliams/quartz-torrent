@@ -21,7 +21,7 @@ module QuartzTorrent
     def serverInit(metainfo, addr, port)
     end
 
-    # Event handler. The current io is ready for reading
+    # Event handler: The current io is ready for reading.
     # If you will write to the same io from both this handler and the timerExpired handler,
     # you must make sure to perform all writing at once in this handler. If not then 
     # the writes from the timer handler may be interleaved. 
@@ -43,19 +43,22 @@ module QuartzTorrent
     def recvData(metainfo)
     end
 
-    # Event handler. A timer has expired
+    # Event handler: a timer has expired. 
+    # @param metainfo The metainfo associated with the timer, that was passed to scheduleTimer.
     def timerExpired(metainfo)
     end
 
-    # Event handler. Error during read, or write. Connection errors are reported separately in connectError
+    # Event handler: an error occurred during read or write. Connection errors are reported separately in connectError
+    # @param metainfo The metainfo associated with the io.
     def error(metainfo, details)
     end
 
-    # Event handler. Error during connection, or connection timed out.
+    # Event handler: an error occurred during connection, or connection timed out.
+    # @param metainfo The metainfo associated with the io, as passed to the connect method.
     def connectError(metainfo, details)
     end
 
-    # Event handler. This is called for events added using addUserEvent to the reactor.
+    # Event handler: this is called for events added using addUserEvent to the reactor.
     def userEvent(event)
     end
 
@@ -63,6 +66,12 @@ module QuartzTorrent
     attr_accessor :reactor
 
     # Schedule a timer.
+    # @param duration  The duration of the timer in seconds
+    # @param metainfo  The metainfo to associate with the timer
+    # @param recurring If true when the timer duration expires, the timer will be rescheduled. If false the timer 
+    #                     will not be rescheduled.
+    # @param immed     If true then the timer will expire immediately (the next pass through the event loop). If the timer
+    #                     is also recurring it will then be rescheduled according to it's duratoin.
     def scheduleTimer(duration, metainfo = nil, recurring = true, immed = false)
       @reactor.scheduleTimer(duration, metainfo, recurring, immed) if @reactor
     end  
@@ -73,48 +82,52 @@ module QuartzTorrent
       @reactor.cancelTimer(timerInfo) if @reactor
     end
 
+    # Create a TCP connection to the specified host and port. Associate the passed metainfo with the IO representing the connection.
     def connect(addr, port, metainfo, timeout = nil)
       @reactor.connect(addr, port, metainfo, timeout) if @reactor
     end
 
-    # Write data to the current io
+    # Write data to the current io.
     def write(data)
       @reactor.write(data) if @reactor
     end
 
-    # Read len bytes from the current io
+    # Read len bytes from the current io. This is meant to be called from one of the event handler methods.
     def read(len)
       result = ''
       result = @reactor.read(len) if @reactor 
       result
     end
 
-    # Shutdown the reactor
+    # Shutdown the reactor.
     def stopReactor
       @reactor.stop if @reactor
     end
   
-    # Check if stop has been called on the reactor 
+    # Check if stop has been called on the reactor.
     def stopped?
       @stopped
     end
 
-    # Close the current io
+    # Close the current io. This is meant to be called from one of the event handler methods.
     def close(io = nil)
       @reactor.close(io) if @reactor
     end
 
+    # Return the current IO object. This is meant to be called from one of the event handler methods. 
+    # The returned object is actually an IoFacade, a wrapper around the IO object.
     def currentIo
       result = nil
       result = @reactor.currentIo if @reactor
       result
     end
     
-    # Find an io by metainfo
+    # Find an io by metainfo.
     def findIoByMetainfo(metainfo)
       @reactor.findIoByMetainfo metainfo if metainfo && @reactor
     end
-
+  
+    # Set the metainfo for the current io. This is meant to be called from one of the event handler methods.
     def setMetaInfo(metainfo)
       @reactor.setMetaInfo metainfo if @reactor
     end
@@ -130,6 +143,8 @@ module QuartzTorrent
     end
   end
   
+  # Simple class used to buffer output for an IO until it's ready for writing. This is not part of the 
+  # public API; it's used internally by the IOInfo class.
   class OutputBuffer
     # Create a new OutputBuffer for the specified IO. The parameter seekable should be
     # true or false. If true, then this output buffer will support seek
@@ -144,14 +159,17 @@ module QuartzTorrent
       end
     end
 
+    # Is the buffer empty?
     def empty?
       @buffer.length == 0
     end
 
+    # Number of bytes in the buffer.
     def size
       @buffer.length
     end
 
+    # Append data to the buffer.
     def append(data)
       if ! @seekable
         @buffer << data
@@ -208,6 +226,7 @@ module QuartzTorrent
       hash.delete @io
     end
 
+    # Read `length` bytes.
     def read(length)
       data = ''
       while data.length < length
@@ -249,6 +268,7 @@ module QuartzTorrent
       data
     end
 
+    # Write data to the IO.
     def write(data)
       # Issue: what about write, read, read on files opened for read/write? Write should happen at offset X, but reads moved to offset N. Since writes
       # are buffered, write may happen after read which means write will happen at the wrong offset N. Can fix by always seeking (if needed) before writes to the 
@@ -259,37 +279,49 @@ module QuartzTorrent
       data.length
     end
 
+    # Seek on the io. 
+    # @param amount  amount to seek.
+    # @param whence  one of the whence constants from IO::seek.
     def seek(amount, whence)
       @io.seek amount, whence if @ioInfo.seekable?
     end
 
+    # Flush data.
     def flush
       @io.flush
     end
   
+    # Close the io.
     def close
       @io.close
     end
 
+    # Check if the io is closed.
     def closed?
       @io.closed?
     end
   end
 
-  # An IoFacade that doesn't allow reading.
+  # An IoFacade that doesn't allow reading. This is not part of the public API.
   class WriteOnlyIoFacade < IoFacade
+    # Create a new WriteOnlyIoFacade that delegates to the passed IOInfo object.
     def initialize(ioInfo, logger = nil, readError = "Reading is not allowed for this IO")
       super(ioInfo, logger)
       @readError = readError
     end
 
+    # Raise an exception.
     def read(length)
       raise @readError
     end
   end
 
-  # An IO and associated meta-information used by the Reactor.
+  # An IO and associated meta-information used by the Reactor. This is not part of the public API.
   class IOInfo
+    # Create a new IOInfo object that operates on the passed IO object.
+    # @param io       An IO object
+    # @param metainfo The metainfo to associate with the IO.
+    # @param seekable Whether the IO is seekable or not.
     def initialize(io, metainfo, seekable = false)
       @io = io
       @metainfo = metainfo
@@ -315,6 +347,8 @@ module QuartzTorrent
     attr_accessor :useErrorhandler
     attr_accessor :readRateLimit
     attr_accessor :writeRateLimit
+
+    # Is the IO seekable.
     def seekable?
       @seekable
     end
@@ -502,7 +536,7 @@ module QuartzTorrent
         end
       end
 
-      @logger.info "Reactor shutting down"
+      @logger.info "Reactor shutting down" if @logger
 
       # Event loop finished
       @ioInfo.each do |k,v|
@@ -800,6 +834,7 @@ module QuartzTorrent
     end
 
     def disposeIo(io)
+      # Inner function in disposeIo.
       def closeIo(io)
         begin
           io.close if !io.closed?

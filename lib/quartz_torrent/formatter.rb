@@ -2,8 +2,11 @@ module QuartzTorrent
   # Class that can be used to format different quantities into 
   # human readable strings.
   class Formatter
+    # Number of bytes in a Kilobyte.
     Kb = 1024
+    # Number of bytes in a Megabyte.
     Meg = 1024*Kb
+    # Number of bytes in a Gigabyte.
     Gig = 1024*Meg
 
     # Format a size in bytes.
