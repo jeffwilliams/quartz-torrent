@@ -87,12 +87,15 @@ module QuartzTorrent
     MessageCancel = 8
     MessageExtended = 20
 
+    # Create a new PeerWireMessage with the specified message id.
     def initialize(messageId)
       @messageId = messageId
     end
 
+    # Get the message id of this message (the message type from the peer wire protocol). 
     attr_reader :messageId
 
+    # Serialize this message to the passed io
     def serializeTo(io)
       io.write [payloadLength+1].pack("N")
       io.write [@messageId].pack("C")
@@ -108,6 +111,7 @@ module QuartzTorrent
       payloadLength + 5
     end
 
+    # Unserialize the message from the passed string.
     def unserialize(payload)
       raise "Subclasses of PeerWireMessage must implement unserialize but #{self.class} didn't"
     end

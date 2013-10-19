@@ -2,9 +2,11 @@ require 'quartz_torrent/rate'
 require 'quartz_torrent/peermsgserialization'
 
 module QuartzTorrent
+  # This class represents a torrent peer. 
   class Peer
     @@stateChangeListeners = []
 
+    # Create a new Peer using the information from the passed TrackerPeer object.
     def initialize(trackerPeer)
       @trackerPeer = trackerPeer
       @amChoked = true
@@ -86,6 +88,7 @@ module QuartzTorrent
     # A PeerWireMessageSerializer that can unserialize and serialize messages to and from this peer.
     attr_accessor :peerMsgSerializer
 
+    # Return a string representation of the peer.
     def to_s
       @trackerPeer.to_s
     end
@@ -95,6 +98,7 @@ module QuartzTorrent
       @@stateChangeListeners.push l
     end
 
+    # Equate peers.
     def eql?(o)
       o.is_a?(Peer) && trackerPeer.eql?(o.trackerPeer)
     end

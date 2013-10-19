@@ -35,17 +35,21 @@ module QuartzTorrent
       end
     end
 
+    # Hash code of this TrackerPeer.
     def hash
       @hash
     end
 
+    # Equate to another TrackerPeer.
     def eql?(o)
       o.ip == @ip && o.port == @port
     end
 
-    # Ip address, a string in dotted-quad notation
+    # IP address, a string in dotted-quad notation
     attr_accessor :ip
+    # TCP port
     attr_accessor :port
+    # Peer Id. This may be nil.
     attr_accessor :id
 
     def to_s
@@ -64,8 +68,11 @@ module QuartzTorrent
         @left = 0
       end
     end
+    # Number of bytes uploaded
     attr_accessor :uploaded
+    # Number of bytes downloaded
     attr_accessor :downloaded
+    # Number of bytes left to download before torrent is completed
     attr_accessor :left
   end
 
@@ -98,6 +105,9 @@ module QuartzTorrent
   class TrackerClient
     include QuartzTorrent
 
+    # Create a new TrackerClient
+    # @param announceUrl The announce URL of the tracker
+    # @param infoHash    The infoHash of the torrent we're tracking
     def initialize(announceUrl, infoHash, dataLength = 0, maxErrors = 20)
       @peerId = "-QR0001-" # Azureus style
       @peerId << Process.pid.to_s
@@ -126,10 +136,13 @@ module QuartzTorrent
     # with up-to-date information.
     attr_accessor :dynamicRequestParamsBuilder
 
+    # Return true if this TrackerClient is started, false otherwise.
     def started?
       @started
     end
 
+    # Return the list of peers that the TrackerClient knows about. This list grows over time
+    # as more peers are reported from the tracker.
     def peers
       result = nil
       @peersMutex.synchronize do
@@ -153,7 +166,8 @@ module QuartzTorrent
       @errors
     end
 
-    # Create a new TrackerClient using the passed information.
+    # Create a new TrackerClient using the passed information. This is a factory method that will return
+    # a tracker that talks the protocol specified in the URL.
     def self.create(announceUrl, infoHash, dataLength = 0, start = true)
       result = nil
       if announceUrl =~ /udp:\/\//
@@ -166,6 +180,7 @@ module QuartzTorrent
       result
     end
 
+    # Create a new TrackerClient using the passed Metainfo object.
     def self.createFromMetainfo(metainfo, start = true)
       create(metainfo.announce, metainfo.infoHash, metainfo.info.dataLength, start)
     end

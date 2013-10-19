@@ -2,6 +2,7 @@ require 'quartz_torrent/peer.rb'
 require 'quartz_torrent/util'
 
 module QuartzTorrent
+  # A container class for holding torrent peers. Allows lookup by different properties.
   class PeerHolder
     def initialize
       @peersById = {}
@@ -10,20 +11,24 @@ module QuartzTorrent
       @log = LogManager.getLogger("peerholder")
     end
 
+    # Find a peer by its trackerpeer's peerid. This is the id returned by the tracker, and may be nil.
     def findById(peerId)
       @peersById[peerId]
     end
 
+    # Find a peer by its IP address and port.
     def findByAddr(ip, port)
       @peersByAddr[ip + port.to_s]
     end
 
+    # Find all peers related to the torrent with the passed infoHash.
     def findByInfoHash(infoHash)
       l = @peersByInfoHash[infoHash]
       l = [] if ! l
       l
     end
 
+    # Add a peer to the PeerHolder.
     def add(peer)
       raise "Peer must have it's infoHash set." if ! peer.infoHash
 
@@ -44,7 +49,7 @@ module QuartzTorrent
       @peersByInfoHash.pushToList(peer.infoHash, peer)
     end
 
-    # This peer, which previously had no id, has finished handshaking and now has an ID.
+    # Set the id for a peer. This peer, which previously had no id, has finished handshaking and now has an ID.
     def idSet(peer)
       @peersById.each do |e| 
         return if e.eql?(peer)
@@ -52,6 +57,7 @@ module QuartzTorrent
       @peersById.pushToList(peer.trackerPeer.id, peer)
     end
 
+    # Delete the specified peer from the PeerHolder.
     def delete(peer)
       @peersByAddr.delete byAddrKey(peer)
 
@@ -82,14 +88,17 @@ module QuartzTorrent
       end
     end
 
+    # Return the list of all peers.
     def all
       @peersByAddr.values
     end
 
+    # Return the number of peers in the holder.
     def size
       @peersByAddr.size
     end
 
+    # Output a string representation of the PeerHolder, for debugging purposes.
     def to_s(infoHash = nil)
       def makeFlags(peer)
         s = "["
