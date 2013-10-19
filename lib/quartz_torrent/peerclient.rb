@@ -1013,6 +1013,7 @@ module QuartzTorrent
       end
 
       peer.bitfield = msg.bitfield
+      peer.bitfield.length = torrentData.info.pieces.length
 
       if ! torrentData.blockState
         @logger.warn "Bitfield: no blockstate yet."

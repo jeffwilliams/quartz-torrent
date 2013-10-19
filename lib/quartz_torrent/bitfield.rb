@@ -52,6 +52,17 @@ puts "]"
     # Length of the Bitfield in bits.
     attr_reader :length
 
+    # Adjust the length of the bitfield. This might be necessary if we had to unserialize the bitfield from
+    # a serialized array of bytes.
+    def length=(l)
+      byteLen = 0
+      byteLen = (l-1)/8+1 if l > 0
+
+      raise "Length adjustment would change size of underlying array" if byteLen != byteLength
+
+      @length = l
+    end
+
     
     # Length of the Bitfield in bytes.
     def byteLength
