@@ -143,6 +143,8 @@ module QuartzTorrent
     # After we have completed downloading a torrent, we will continue to upload until we have 
     # uploaded ratio * torrent_size bytes. If nil, no limit on upload.
     attr_accessor :ratio
+    attr_accessor :bytesUploaded
+    attr_accessor :bytesDownloaded
   
     # Update the data in this TorrentDataDelegate from the torrentData
     # object that it was created from. TODO: What if that torrentData is now gone?
@@ -1100,6 +1102,7 @@ module QuartzTorrent
               msg.pieceIndex = readRequestMetadata.requestMsg.pieceIndex
               msg.blockOffset = readRequestMetadata.requestMsg.blockOffset
               msg.data = result.data
+              @logger.debug "Sending block to #{peer}: piece #{msg.pieceIndex} offset #{msg.blockOffset} length #{msg.data.length}"
               sendMessageToPeer msg, io, peer
               torrentData.bytesUploaded += msg.data.length
               @logger.debug "Sending piece to peer"
@@ -1318,7 +1321,6 @@ module QuartzTorrent
       rescue
         @logger.warn "Sending message to peer #{peer} failed: #{$!.message}"
       end
-      msg.serializeTo io
     end
 
     # Update our internal peer list for this torrent from the tracker client
