@@ -22,7 +22,7 @@ Gem::Specification.new do |s|
   s.summary     = "A bittorrent library"
   s.description = "A pure ruby bittorrent library"
   s.authors     = ["Jeff Williams"]
-  s.files       = Dir['lib/*.rb'] + Dir['lib/quartz_torrent/*.rb'] + ['README.md', '.yardopts']
+  s.files       = Dir['lib/*.rb'] + Dir['lib/quartz_torrent/*.rb'] + ['README.md', 'LICENSE', '.yardopts']
   s.homepage    =
     'https://github.com/jeffwilliams/quartz-torrent'
 
