@@ -4,7 +4,6 @@ require "quartz_torrent/peermsg.rb"
 require "quartz_torrent/reactor.rb"
 require "quartz_torrent/util.rb"
 require "quartz_torrent/classifiedpeers.rb"
-require "quartz_torrent/classifiedpeers.rb"
 require "quartz_torrent/peerholder.rb"
 require "quartz_torrent/peermanager.rb"
 require "quartz_torrent/blockstate.rb"
@@ -298,7 +297,7 @@ module QuartzTorrent
         @logger.warn "Asked to set download rate limit for a non-existent torrent #{QuartzTorrent.bytesToHex(infoHash)}"
         return
       end
-      
+ 
       if bytesPerSecond
         if ! torrentData.downRateLimit
           torrentData.downRateLimit = RateLimit.new(bytesPerSecond, 2*bytesPerSecond, 0)
@@ -308,6 +307,13 @@ module QuartzTorrent
       else
         torrentData.downRateLimit = nil
       end
+
+      torrentData.peers.all.each do |peer|
+        withPeersIo(peer, "setting download rate limit") do |io|
+          io.readRateLimit = torrentData.downRateLimit
+        end
+      end
+     
     end
 
     # Set the upload rate limit. Pass nil as the bytesPerSecond to disable the limit.
@@ -326,6 +332,12 @@ module QuartzTorrent
         end
       else
         torrentData.upRateLimit = nil
+      end
+
+      torrentData.peers.all.each do |peer|
+        withPeersIo(peer, "setting upload rate limit") do |io|
+          io.writeRateLimit = torrentData.upRateLimit
+        end
       end
     end
 

@@ -300,6 +300,18 @@ module QuartzTorrent
     def closed?
       @io.closed?
     end
+
+    def readRateLimit=(rate)
+      raise "The argument must be a RateLimit" if ! rate.nil? && ! rate.is_a?(RateLimit)
+      @ioInfo.readRateLimit = rate
+    end
+
+    def writeRateLimit=(rate)
+      raise "The argument must be a RateLimit" if ! rate.nil? && !rate.is_a?(RateLimit)
+      @ioInfo.writeRateLimit = rate
+    end
+
+    attr_accessor :writeRateLimit
   end
 
   # An IoFacade that doesn't allow reading. This is not part of the public API.
@@ -617,13 +629,15 @@ module QuartzTorrent
     end
 
     # Meant to be called from the handler. Sets the max rate at which the current io can read.
-    def setReadRateLimit(rateLimit)
-      @currentIoInfo.readRateLimit = rateLimit
+    def setReadRateLimit(rate)
+      raise "The argument must be a RateLimit" if ! rate.nil? && !rate.is_a?(RateLimit)
+      @currentIoInfo.readRateLimit = rate
     end
 
     # Meant to be called from the handler. Sets the max rate at which the current io can be written to.
-    def setWriteRateLimit(rateLimit)
-      @currentIoInfo.writeRateLimit = rateLimit
+    def setWriteRateLimit(rate)
+      raise "The argument must be a RateLimit" if ! rate.nil? && !rate.is_a?(RateLimit)
+      @currentIoInfo.writeRateLimit = rate
     end
 
     # Meant to be called from the handler. Find an IO by metainfo. The == operator is used to 
