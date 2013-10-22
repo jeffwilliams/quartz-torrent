@@ -37,6 +37,8 @@ module QuartzTorrent
       @peerManager = PeerManager.new
       @pieceManagerRequestMetadata = {}
       @pieceManagerMetainfoRequestMetadata = {}
+      @bytesDownloadedDataOnly = 0
+      @bytesUploadedDataOnly = 0
       @bytesDownloaded = 0
       @bytesUploaded = 0
       @magnet = nil
@@ -71,6 +73,8 @@ module QuartzTorrent
     # Metadata associated with outstanding requests to the PieceManager responsible for the pieces of the torrent metainfo.
     attr_accessor :pieceManagerMetainfoRequestMetadata
     attr_accessor :peerChangeListener
+    attr_accessor :bytesDownloadedDataOnly
+    attr_accessor :bytesUploadedDataOnly
     attr_accessor :bytesDownloaded
     attr_accessor :bytesUploaded
     attr_accessor :state
@@ -142,6 +146,8 @@ module QuartzTorrent
     # After we have completed downloading a torrent, we will continue to upload until we have 
     # uploaded ratio * torrent_size bytes. If nil, no limit on upload.
     attr_accessor :ratio
+    attr_accessor :bytesUploadedDataOnly
+    attr_accessor :bytesDownloadedDataOnly
     attr_accessor :bytesUploaded
     attr_accessor :bytesDownloaded
   
@@ -161,6 +167,8 @@ module QuartzTorrent
     def fillFrom(torrentData)
       @infoHash = torrentData.infoHash
       @info = torrentData.info
+      @bytesUploadedDataOnly = torrentData.bytesUploadedDataOnly
+      @bytesDownloadedDataOnly = torrentData.bytesDownloadedDataOnly
       @bytesUploaded = torrentData.bytesUploaded
       @bytesDownloaded = torrentData.bytesDownloaded
 
@@ -517,7 +525,10 @@ module QuartzTorrent
           close
           return
         end
+
         peer.updateUploadRate msg
+        torrentData = @torrentData[peer.infoHash]
+        torrentData.bytesDownloaded += msg.length if torrentData
         @logger.debug "Peer #{peer} upload rate: #{peer.uploadRate.value}  data only: #{peer.uploadRateDataOnly.value}"
       end
 
@@ -815,7 +826,7 @@ module QuartzTorrent
       end
 
       if torrentData.state == :uploading && (torrentData.state != :paused) && torrentData.ratio
-        if torrentData.bytesUploaded >= torrentData.ratio*torrentData.blockState.totalLength
+        if torrentData.bytesUploadedDataOnly >= torrentData.ratio*torrentData.blockState.totalLength
           @logger.info "Pausing torrent due to upload ratio limit." if torrentData.metainfoPieceState.complete?
           setPaused(infoHash, true)
           return
@@ -992,7 +1003,7 @@ module QuartzTorrent
       peer.requestedBlocks.delete blockInfo.blockIndex
       # Block is marked as not requested when hash is confirmed
 
-      torrentData.bytesDownloaded += msg.data.length
+      torrentData.bytesDownloadedDataOnly += msg.data.length
       id = torrentData.pieceManager.writeBlock(msg.pieceIndex, msg.blockOffset, msg.data)
       torrentData.pieceManagerRequestMetadata[id] = PieceManagerRequestMetadata.new(:write, msg)
     end
@@ -1117,7 +1128,7 @@ module QuartzTorrent
               msg.data = result.data
               @logger.debug "Sending block to #{peer}: piece #{msg.pieceIndex} offset #{msg.blockOffset} length #{msg.data.length}"
               sendMessageToPeer msg, io, peer
-              torrentData.bytesUploaded += msg.data.length
+              torrentData.bytesUploadedDataOnly += msg.data.length
               @logger.debug "Sending piece to peer"
             end
           else
@@ -1329,6 +1340,9 @@ module QuartzTorrent
 
     def sendMessageToPeer(msg, io, peer)
       peer.updateDownloadRate(msg)
+      torrentData = @torrentData[peer.infoHash]
+      torrentData.bytesUploaded += msg.length if torrentData
+
       begin
         peer.peerMsgSerializer.serializeTo(msg, io)
       rescue
@@ -1617,8 +1631,8 @@ module QuartzTorrent
         result = TrackerDynamicRequestParams.new(dataLength)
         if torrentData && torrentData.blockState
           result.left = torrentData.blockState.totalLength - torrentData.blockState.completedLength
-          result.downloaded = torrentData.bytesDownloaded
-          result.uploaded = torrentData.bytesUploaded
+          result.downloaded = torrentData.bytesDownloadedDataOnly
+          result.uploaded = torrentData.bytesUploadedDataOnly
         end
         result
       end

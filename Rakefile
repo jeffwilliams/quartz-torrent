@@ -6,7 +6,6 @@ $gemfile_name = nil
 task :default => [:makegem]
 
 task :makegem do
-  #system "gem build quartz_torrent.gemspec"
   output = `gem build quartz_torrent.gemspec`
   output.each_line do |line|
     $gemfile_name = $1 if line =~ /File: (.*)$/
