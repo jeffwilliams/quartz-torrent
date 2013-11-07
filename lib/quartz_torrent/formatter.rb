@@ -90,6 +90,20 @@ module QuartzTorrent
         raise "Malformed size '#{size}'"
       end
     end
-  end
 
+    # Parse a duration of time into seconds.
+    def self.parseTime(time)
+      return nil if ! time
+
+      if time =~ /(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?\s*(?:(\d+)\s*s)?/
+        h = $1.to_i
+        m = $2.to_i
+        s = $3.to_i
+
+        h*3600+m*60+s
+      else
+        raise "Malformed duration '#{time}'"
+      end
+    end
+  end
 end

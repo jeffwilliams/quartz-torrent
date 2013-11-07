@@ -55,6 +55,8 @@ module QuartzTorrent
       @downRateLimit = nil
       @upRateLimit = nil
       @ratio = nil
+      @uploadDuration = nil
+      @downloadCompletedTime = nil
     end
     # The torrents Metainfo.Info struct. This is nil if the torrent has no metadata and we need to download it
     # (i.e. a magnet link)
@@ -99,6 +101,11 @@ module QuartzTorrent
     # After we have completed downloading a torrent, we will continue to upload until we have 
     # uploaded ratio * torrent_size bytes. If nil, no limit on upload.
     attr_accessor :ratio
+    # Maximum amount of time in seconds that the torrent can be in the uploading state before it's paused.
+    attr_accessor :uploadDuration
+    # Time at which we completely downloaded all bytes of the torrent.
+    attr_accessor :downloadCompletedTime
+
   end
 
   # Data about torrents for use by the end user. 
@@ -146,6 +153,7 @@ module QuartzTorrent
     # After we have completed downloading a torrent, we will continue to upload until we have 
     # uploaded ratio * torrent_size bytes. If nil, no limit on upload.
     attr_accessor :ratio
+    attr_accessor :uploadDuration
     attr_accessor :bytesUploadedDataOnly
     attr_accessor :bytesDownloadedDataOnly
     attr_accessor :bytesUploaded
@@ -210,6 +218,7 @@ module QuartzTorrent
       @downloadRateLimit = torrentData.downRateLimit.unitsPerSecond if torrentData.downRateLimit
       @uploadRateLimit = torrentData.upRateLimit.unitsPerSecond if torrentData.upRateLimit
       @ratio = torrentData.ratio
+      @uploadDuration = torrentData.uploadDuration
     end
 
     def buildPeersList(torrentData)
@@ -358,6 +367,18 @@ module QuartzTorrent
       end
 
       torrentData.ratio = ratio
+    end
+
+    # Set the maximum amount of time (in seconds) that a torrent can be in the upload-only state before
+    # it is paused. Pass nil to disable.
+    def setUploadDuration(infoHash, seconds)
+      torrentData = @torrentData[infoHash]
+      if ! torrentData
+        @logger.warn "Asked to set upload duration for a non-existent torrent #{QuartzTorrent.bytesToHex(infoHash)}"
+        return
+      end
+
+      torrentData.uploadDuration = seconds
     end
 
     # Reactor method called when a peer has connected to us.
@@ -825,11 +846,20 @@ module QuartzTorrent
         return
       end
 
-      if torrentData.state == :uploading && (torrentData.state != :paused) && torrentData.ratio
-        if torrentData.bytesUploadedDataOnly >= torrentData.ratio*torrentData.blockState.totalLength
-          @logger.info "Pausing torrent due to upload ratio limit." if torrentData.metainfoPieceState.complete?
-          setPaused(infoHash, true)
-          return
+      if torrentData.state == :uploading && (torrentData.state != :paused)
+        if torrentData.ratio
+          if torrentData.bytesUploadedDataOnly >= torrentData.ratio*torrentData.blockState.totalLength
+            @logger.info "Pausing torrent due to upload ratio limit." if torrentData.metainfoPieceState.complete?
+            setPaused(infoHash, true)
+            return
+          end
+        end
+        if torrentData.uploadDuration && torrentData.downloadCompletedTime
+          if Time.new > torrentData.downloadCompletedTime + torrentData.uploadDuration
+            @logger.info "Pausing torrent due to upload duration being reached." if torrentData.metainfoPieceState.complete?
+            setPaused(infoHash, true)
+            return
+          end
         end
       end
 
@@ -887,9 +917,10 @@ module QuartzTorrent
       end
 
       if blockInfos.size == 0
-        if torrentData.blockState.completePieceBitfield.allSet?
+        if torrentData.state != :uploading && torrentData.blockState.completePieceBitfield.allSet?
           @logger.info "Download of #{QuartzTorrent.bytesToHex(infoHash)} complete."
           torrentData.state = :uploading
+          torrentData.downloadCompletedTime = Time.new
         end
       end
 
@@ -1610,6 +1641,13 @@ module QuartzTorrent
     def setUploadRatio(infoHash, ratio)
       raise "upload ratio must be Numeric, not a #{ratio.class}" if ratio && ! ratio.is_a?(Numeric)
       @handler.setUploadRatio(infoHash, ratio)
+    end
+
+    # Set the maximum amount of time (in seconds) that a torrent can be in the upload-only state before
+    # it is paused. Pass nil to disable.
+    def setUploadDuration(infoHash, seconds)
+      raise "upload ratio must be Numeric, not a #{seconds.class}" if seconds && ! seconds.is_a?(Numeric)
+      @handler.setUploadDuration(infoHash, seconds)
     end
 
     # Remove a currently running torrent

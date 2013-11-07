@@ -39,6 +39,16 @@ class TestFormatter < MiniTest::Unit::TestCase
     assert_equal 100, Formatter.parseSize("100 B/s")
   end
 
+  def testParseTime
+    assert_equal 65, Formatter.parseTime("1m5s")  
+    assert_equal 65, Formatter.parseTime("1m 5s")  
+    assert_equal 65, Formatter.parseTime("1m   5s")
+    assert_equal 65, Formatter.parseTime("1 m   5  s")
+    assert_equal 65, Formatter.parseTime("65s")
+    assert_equal 3600, Formatter.parseTime("1h")
+    assert_equal 3601, Formatter.parseTime("1h1s")
+  end
+
 end
 
 
