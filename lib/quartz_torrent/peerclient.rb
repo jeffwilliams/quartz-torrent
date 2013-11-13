@@ -1067,7 +1067,11 @@ module QuartzTorrent
       end
 
       peer.bitfield = msg.bitfield
-      peer.bitfield.length = torrentData.info.pieces.length
+      if torrentData.info
+        peer.bitfield.length = torrentData.info.pieces.length
+      else
+        @logger.warn "A peer connected and sent a bitfield but we don't know the length of the torrent yet. Assuming number of pieces is divisible by 8"
+      end
 
       if ! torrentData.blockState
         @logger.warn "Bitfield: no blockstate yet."
