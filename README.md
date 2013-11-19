@@ -15,6 +15,7 @@ Features:
   - BEP 23: Tracker Returns Compact Peer Lists
   - Upload and download rate limiting
   - Upload ratio enforcement
+  - Upload duration limit
 
 Requirements
 ------------
