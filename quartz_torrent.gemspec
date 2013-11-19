@@ -19,6 +19,7 @@ Gem::Specification.new do |s|
   s.name        = 'quartz_torrent'
   s.version     = version
   s.date        = Time.new
+  s.license     = 'MIT'
   s.summary     = "A bittorrent library"
   s.description = "A pure ruby bittorrent library"
   s.authors     = ["Jeff Williams"]
