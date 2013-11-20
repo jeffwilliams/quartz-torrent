@@ -37,6 +37,12 @@ module QuartzTorrent
       @pool -= n
     end
 
+    def to_s
+      s = ""
+      s << "units/sec: #{@unitsPerSecond}, avail: #{avail}, upperlim: #{@upperLimit}"
+      s
+    end
+
     private
     def updatePool
       now = Time.new
