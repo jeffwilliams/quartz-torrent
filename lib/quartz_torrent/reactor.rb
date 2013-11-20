@@ -311,7 +311,6 @@ module QuartzTorrent
       @ioInfo.writeRateLimit = rate
     end
 
-    attr_accessor :writeRateLimit
   end
 
   # An IoFacade that doesn't allow reading. This is not part of the public API.
