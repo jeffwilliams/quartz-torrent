@@ -120,7 +120,11 @@ module QuartzTorrent
 
     # Return true if the specified piece is completed. The piece is specified by index.
     def pieceCompleted?(pieceIndex)
-      @completePieces.set? pieceIndex
+      if pieceIndex >= 0 && pieceIndex < @completePieces.length
+        @completePieces.set? pieceIndex
+      else
+        false
+      end
     end
 
     # Do we have all the pieces of the metadata?
