@@ -16,6 +16,7 @@ class TestFormatter < MiniTest::Unit::TestCase
     assert_equal "1.46KB", Formatter.formatSize(1500)
     assert_equal "1.00MB", Formatter.formatSize(1048576)
     assert_equal "1.00GB", Formatter.formatSize(1048576*1024)
+    assert_nil Formatter.formatSize(nil)
   end
 
   def testParseSize
@@ -37,6 +38,7 @@ class TestFormatter < MiniTest::Unit::TestCase
     # Allow parsing a speed as a size
     assert_equal 102400, Formatter.parseSize("100KB/s")
     assert_equal 100, Formatter.parseSize("100 B/s")
+    assert_nil Formatter.parseSize(nil)
   end
 
   def testParseTime
@@ -47,6 +49,7 @@ class TestFormatter < MiniTest::Unit::TestCase
     assert_equal 65, Formatter.parseTime("65s")
     assert_equal 3600, Formatter.parseTime("1h")
     assert_equal 3601, Formatter.parseTime("1h1s")
+    assert_nil Formatter.parseTime(nil)
   end
 
 end

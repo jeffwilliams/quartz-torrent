@@ -11,6 +11,7 @@ module QuartzTorrent
 
     # Format a size in bytes.
     def self.formatSize(size)
+      return nil if !size
       s = size.to_f
       if s >= Gig
         s = "%.2fGB" % (s / Gig)
@@ -26,17 +27,24 @@ module QuartzTorrent
 
     # Format a floating point number as a percentage with one decimal place.
     def self.formatPercent(frac)
+      return nil if ! frac
       s = "%.1f" % (frac.to_f*100)
       s + "%"
     end
     
     # Format a speed in bytes per second.
     def self.formatSpeed(s)
-      Formatter.formatSize(s) + "/s"
+      size = Formatter.formatSize(s)
+      if size
+        size + "/s"
+      else
+        nil
+      end
     end
 
     # Format a duration of time in seconds.
     def self.formatTime(secs)
+      return nil if ! secs
       s = ""
       time = secs.to_i
       arr = []
@@ -68,6 +76,7 @@ module QuartzTorrent
 
     # Parse a size in the format '50 KB'
     def self.parseSize(size)
+      return nil if ! size
       if size =~ /(\d+(?:\.\d+)?)\s*([^\d]+)*/
         value = $1.to_f
         suffix = ($2 ? $2.downcase : nil)
