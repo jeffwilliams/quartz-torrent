@@ -103,7 +103,8 @@ To-Do
     Finally unpause. The "server" peerclient will refuse the connections to re-establish because it believes the
     peer is already connected.
   - Improve CPU usage. 
-  - Implement endgame strategy and support Cancel messages.
+  - Implement torrent queueing so that only a limited number of torrents are running at once. This will lower
+    the amount of unbuffered disk IO.
   - Refactor Metadata.Info into it's own independent class.
   - Improve Documentation
   - In peerclient, prefix log messages with torrent infohash, or (truncated) torrent name

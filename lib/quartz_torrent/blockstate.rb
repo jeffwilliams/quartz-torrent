@@ -222,6 +222,13 @@ module QuartzTorrent
       result
     end
 
+    # Get a bitfield representing the completed pieces.
+    def completeBlockBitfield
+      result = Bitfield.new(@numBlocks)
+      result.copyFrom(@completeBlocks)
+      result
+    end
+
     # Number of bytes we have downloaded and verified.
     def completedLength
       num = @completeBlocks.countSet

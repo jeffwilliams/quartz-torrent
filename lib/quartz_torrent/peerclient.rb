@@ -57,6 +57,7 @@ module QuartzTorrent
       @ratio = nil
       @uploadDuration = nil
       @downloadCompletedTime = nil
+      @isEndgame = false
     end
     # The torrents Metainfo.Info struct. This is nil if the torrent has no metadata and we need to download it
     # (i.e. a magnet link)
@@ -80,6 +81,7 @@ module QuartzTorrent
     attr_accessor :bytesDownloaded
     attr_accessor :bytesUploaded
     attr_accessor :state
+    attr_accessor :isEndgame
     attr_accessor :metainfoPieceState
     # The timer handle for the timer that requests metainfo pieces. This is used to cancel the 
     # timer when the metadata is completely downloaded.
@@ -250,6 +252,7 @@ module QuartzTorrent
       @requestBlocksPeriod = 1
       @handshakeTimeout = 1
       @requestTimeout = 60
+      @endgameBlockThreshold = 20
     end
 
     attr_reader :torrentData
@@ -863,6 +866,18 @@ module QuartzTorrent
         end
       end
 
+      # Should we switch to endgame mode?
+      if torrentData.state == :running && !torrentData.isEndgame
+        blocks = torrentData.blockState.completeBlockBitfield
+        set = blocks.countSet
+        if set >= blocks.length - @endgameBlockThreshold && set < blocks.length
+          @logger.info "Entering endgame mode: blocks #{set}/#{blocks.length} complete."
+          torrentData.isEndgame = true
+        end
+      elsif torrentData.isEndgame && torrentData.state != :running
+        torrentData.isEndgame = false
+      end
+
       # Delete any timed-out requests.
       classifiedPeers.establishedPeers.each do |peer|
         toDelete = []
@@ -895,24 +910,37 @@ module QuartzTorrent
       # Request blocks
       blockInfos = torrentData.blockState.findRequestableBlocks(classifiedPeers, 100)
       blockInfos.each do |blockInfo|
-        # Pick one of the peers that has the piece to download it from. Pick one of the
-        # peers with the top 3 upload rates.
-        elegiblePeers = blockInfo.peers.find_all{ |p| p.requestedBlocks.length < p.maxRequestedBlocks }.sort{ |a,b| b.uploadRate.value <=> a.uploadRate.value}
-        random = elegiblePeers[rand(blockInfo.peers.size)]
-        peer = elegiblePeers.first(3).push(random).shuffle.first
-        next if ! peer
-        withPeersIo(peer, "requesting block") do |io|
-          if ! peer.amInterested
-            # Let this peer know that I'm interested if I haven't yet.
-            msg = Interested.new
+
+        peersToRequest = []
+        if torrentData.isEndgame
+          # Since we are in endgame mode, request blocks from all elegible peers
+          elegiblePeers = blockInfo.peers.find_all{ |p| p.requestedBlocks.length < p.maxRequestedBlocks }
+
+          peersToRequest.concat elegiblePeers
+        else
+          # Pick one of the peers that has the piece to download it from. Pick one of the
+          # peers with the top 3 upload rates.
+          elegiblePeers = blockInfo.peers.find_all{ |p| p.requestedBlocks.length < p.maxRequestedBlocks }.sort{ |a,b| b.uploadRate.value <=> a.uploadRate.value}
+          random = elegiblePeers[rand(blockInfo.peers.size)]
+          peer = elegiblePeers.first(3).push(random).shuffle.first
+          next if ! peer
+          peersToRequest.push peer
+        end
+
+        peersToRequest.each do |peer|
+          withPeersIo(peer, "requesting block") do |io|
+            if ! peer.amInterested
+              # Let this peer know that I'm interested if I haven't yet.
+              msg = Interested.new
+              sendMessageToPeer msg, io, peer
+              peer.amInterested = true
+            end
+            @logger.debug "Requesting block from #{peer}: piece #{blockInfo.pieceIndex} offset #{blockInfo.offset} length #{blockInfo.length}"
+            msg = blockInfo.getRequest
             sendMessageToPeer msg, io, peer
-            peer.amInterested = true
+            torrentData.blockState.setBlockRequested blockInfo, true
+            peer.requestedBlocks[blockInfo.blockIndex] = Time.new
           end
-          @logger.debug "Requesting block from #{peer}: piece #{blockInfo.pieceIndex} offset #{blockInfo.offset} length #{blockInfo.length}"
-          msg = blockInfo.getRequest
-          sendMessageToPeer msg, io, peer
-          torrentData.blockState.setBlockRequested blockInfo, true
-          peer.requestedBlocks[blockInfo.blockIndex] = Time.new
         end
       end
 
@@ -1027,16 +1055,42 @@ module QuartzTorrent
       end
 
       blockInfo = torrentData.blockState.createBlockinfoByPieceResponse(msg.pieceIndex, msg.blockOffset, msg.data.length)
+
+      if ! peer.requestedBlocks.has_key?(blockInfo.blockIndex) 
+        @logger.debug "Receive piece: we either didn't request this piece, or it was already received due to endgame strategy. Ignoring this message."
+        return
+      end
+
       if torrentData.blockState.blockCompleted?(blockInfo)
         @logger.debug "Receive piece: we already have this block. Ignoring this message."
         return
       end
       peer.requestedBlocks.delete blockInfo.blockIndex
-      # Block is marked as not requested when hash is confirmed
 
+      # Block is marked as not requested when hash is confirmed
       torrentData.bytesDownloadedDataOnly += msg.data.length
       id = torrentData.pieceManager.writeBlock(msg.pieceIndex, msg.blockOffset, msg.data)
       torrentData.pieceManagerRequestMetadata[id] = PieceManagerRequestMetadata.new(:write, msg)
+
+      if torrentData.isEndgame
+        # Assume this block is correct. Send a Cancel message to all other peers from whom we requested
+        # this piece.
+        classifiedPeers = ClassifiedPeers.new torrentData.peers.all
+        classifiedPeers.requestablePeers.each do |otherPeer|
+          if otherPeer.requestedBlocks.has_key?(blockInfo.blockIndex) 
+            withPeersIo(otherPeer, "when sending Cancel message") do |io|
+
+              cancel = Cancel.new
+              cancel.pieceIndex = msg.pieceIndex
+              cancel.blockOffset = msg.blockOffset
+              cancel.blockLength = msg.data.length
+              sendMessageToPeer cancel, io, otherPeer
+              @logger.debug "Sending Cancel message to peer #{peer}"
+            end
+          end
+        end
+      end
+
     end
 
     def handleRequest(msg, peer)
@@ -1553,6 +1607,7 @@ module QuartzTorrent
     attr_accessor :port
 
     # Start the PeerClient: open the listening port, and start a new thread to begin downloading/uploading pieces.
+    # If listening fails, an exception of class Errno::EADDRINUSE is thrown.
     def start 
       return if ! @stopped
 
