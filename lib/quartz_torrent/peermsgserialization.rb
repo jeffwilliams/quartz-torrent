@@ -89,7 +89,7 @@ module QuartzTorrent
               @logger.debug "Peer supports extension #{extName} using id '#{extId}'."
               @extendedMessageIdToClass[extId] = clazz
             else
-              @logger.warn "Peer supports extension #{extName} using id '#{extId}', but I don't know what class to use for that extension."
+              @logger.debug "Peer supports extension #{extName} using id '#{extId}', but I don't know what class to use for that extension."
             end
           end
         else
