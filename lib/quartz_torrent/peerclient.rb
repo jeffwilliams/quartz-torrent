@@ -52,6 +52,7 @@ module QuartzTorrent
       @checkPieceManagerTimer = nil
       @requestBlocksTimer = nil
       @paused = false
+      @queued = false
       @downRateLimit = nil
       @upRateLimit = nil
       @ratio = nil
@@ -80,6 +81,12 @@ module QuartzTorrent
     attr_accessor :bytesUploadedDataOnly
     attr_accessor :bytesDownloaded
     attr_accessor :bytesUploaded
+    # State of the torrent. Is one of the following states:
+    #   :checking_pieces        Checking piece hashes on startup
+    #   :downloading_metainfo   Downloading the torrent metainfo
+    #   :uploading              The torrent is complete and we are only uploading
+    #   :running                The torrent is incomplete and we are downloading and uploading
+    #   :error                  There was an unrecoverable error with the torrent. 
     attr_accessor :state
     attr_accessor :isEndgame
     attr_accessor :metainfoPieceState
@@ -94,8 +101,10 @@ module QuartzTorrent
     attr_accessor :checkPieceManagerTimer
     # Timer handle for timer that requests blocks
     attr_accessor :requestBlocksTimer
-
+    # Is the torrent paused
     attr_accessor :paused
+    # Is the torrent queued
+    attr_accessor :queued
     # The RateLimit for downloading this torrent.
     attr_accessor :downRateLimit
     # The RateLimit for uploading to peers for this torrent.
@@ -1567,9 +1576,39 @@ module QuartzTorrent
 
       return if torrentData.paused == value
 
-      if value
-        torrentData.paused = true
+      torrentData.paused = value
 
+      setFrozen infoHash, value if ! torrentData.queued
+    end
+
+    # Queue or unqueue a torrent
+    def handleQueue(infoHash, value)
+      torrentData = @torrentData[infoHash]
+      if ! torrentData
+        @logger.warn "Asked to queue a non-existent torrent #{QuartzTorrent.bytesToHex(infoHash)}"
+        return
+      end
+      
+      return if torrentData.queued == value
+      
+      torrentData.queued = value
+
+TODO: queue torrent here
+
+      setFrozen infoHash, value if ! torrentData.paused
+    end
+
+
+    # Freeze or unfreeze a torrent. If value is true, then we disconnect from all peers for this torrent and forget 
+    # the peers. If value is false, we start reconnecting to peers.
+    def setFrozen(infoHash, value)
+      torrentData = @torrentData[infoHash]
+      if ! torrentData
+        @logger.warn "Asked to freeze a non-existent torrent #{QuartzTorrent.bytesToHex(infoHash)}"
+        return
+      end
+
+      if value
         # Disconnect from all peers so we won't reply to any messages.
         torrentData.peers.all.each do |peer|
           if peer.state != :disconnected
@@ -1580,16 +1619,16 @@ module QuartzTorrent
             end
           end
           torrentData.peers.delete peer
-        end 
+        end
       else
-        torrentData.paused = false
-
         # Get our list of peers and start connecting right away
         # Non-recurring and immediate timer
-        torrentData.managePeersTimer = 
+        torrentData.managePeersTimer =
           @reactor.scheduleTimer(@managePeersPeriod, [:manage_peers, torrentData.infoHash], false, true)
       end
+
     end
+    
 
   end
 

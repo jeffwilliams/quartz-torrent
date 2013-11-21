@@ -102,9 +102,37 @@ To-Do
   - Start a peerclient with the full torrent. Connect with another peerclient and start downloading, then pause.
     Finally unpause. The "server" peerclient will refuse the connections to re-establish because it believes the
     peer is already connected.
+  - Implement an alert system. This would allow users to detect situations like tracker connection failures, etc.
   - Improve CPU usage. 
-  - Implement torrent queueing so that only a limited number of torrents are running at once. This will lower
-    the amount of unbuffered disk IO.
+  - Implement torrent queueing so that only a limited number of torrents are running at once. This will lower the amount 
+    of unbuffered disk IO, safeguard against the 1024 select limit, and reduce memory usage (less peers)
+    - States: 
+
+        queued, unpaused --pause--> queued, paused
+              |                             |
+            unqueue                      unqueue
+              |                             |
+              v                             v
+        unqueued, unpaused --pause--> unqueued, paused
+
+    - Parameters: max\_running: max number of unpaused, incomplete torrents (non uploading); 
+      max\_unqueued: max number of unpaused, unqueued torrents
+    - On event:
+      if num\_unqueued < max\_unqueued
+        if num\_running < max\_running: 
+          unqueue first incomplete torrent from queue.
+        else
+          unqueue first complete torrent from queue.
+        end
+      end  
+
+    - On add: queue torrent, and perform On Event steps
+    - On complete: perform On Event steps
+    - On upload limit reached: Pause torrent. perform On Event steps
+    - On pause:                Pause torrent. perform On Event steps
+    - On unpause:              queue torrent at head of queue, and perform On Event steps
+    - On delete: delete torrent, and perform On Event steps
+
   - Refactor Metadata.Info into it's own independent class.
   - Improve Documentation
   - In peerclient, prefix log messages with torrent infohash, or (truncated) torrent name
