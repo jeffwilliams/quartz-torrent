@@ -865,7 +865,7 @@ module QuartzTorrent
         return
       end
 
-      if torrentData.state == :uploading && (torrentData.state != :paused)
+      if torrentData.state == :uploading && !torrentData.paused
         if torrentData.ratio
           if torrentData.bytesUploadedDataOnly >= torrentData.ratio*torrentData.blockState.totalLength
             @logger.info "Pausing torrent due to upload ratio limit." if torrentData.metainfoPieceState.complete?
