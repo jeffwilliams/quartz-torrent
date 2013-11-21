@@ -1,3 +1,5 @@
+require "quartz_torrent/log.rb"
+
 module QuartzTorrent
   class TorrentQueue
     # The maxIncomplete and maxActive parameters specify how many torrents may be unpaused and unqueued at once.
@@ -10,6 +12,7 @@ module QuartzTorrent
       @maxIncomplete = maxIncomplete
       @maxActive = maxActive
       @queue = []
+      @logger = LogManager.getLogger("queue")
     end
 
     # Compute which torrents can now be unqueued based on the state of running torrents.
@@ -23,6 +26,8 @@ module QuartzTorrent
         numIncomplete += 1 if incomplete?(torrentData)
         numActive += 1
       end
+      @logger.debug "incomplete: #{numIncomplete}/#{@maxIncomplete} active: #{numActive}/#{@maxActive}"
+      @logger.debug "Queue contains #{size} torrents"
 
       torrents = []
 
@@ -31,10 +36,13 @@ module QuartzTorrent
         if numIncomplete < @maxIncomplete
           # Unqueue first incomplete torrent from queue
           torrentData = dequeueFirstMatching{ |torrentData| incomplete?(torrentData)}
+          @logger.debug "#{torrentData ? "dequeued" : "failed to dequeue"} an incomplete torrent"
           numIncomplete += 1 if torrentData
-        else
+        end
+        if ! torrentData
           # Unqueue first complete (uploading) torrent from queue
           torrentData = dequeueFirstMatching{ |torrentData| !incomplete?(torrentData)}
+          @logger.debug "#{torrentData ? "dequeued" : "failed to dequeue"} a complete torrent"
         end
         numActive += 1 if torrentData
         
@@ -45,6 +53,8 @@ module QuartzTorrent
           break
         end
       end
+
+      @logger.debug "Will dequeue #{torrents.size}"
 
       torrents
     end

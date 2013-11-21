@@ -157,9 +157,27 @@ class TestTorrentqueue < MiniTest::Unit::TestCase
   
   end
 
+  def testPauseUnpause
+    tq = TorrentQueue.new(5,10)
+    torrents = [
+      FakeTorrentData.new(true,false,:running),
+    ]
+    torrents.first.paused = false  
+    tq.push torrents.first
+    assert_equal 1, tq.dequeue(torrents).size
+  end
+ 
+  def testUnqueueComplete
+    tq = TorrentQueue.new(5,10)
+    torrents = [
+      FakeTorrentData.new(false,false,:uploading),
+    ]
+    tq.push torrents.first
+    assert_equal 1, tq.dequeue(torrents).size
 
-  #test paused dont count
 
+  end
+  
 end
 
 

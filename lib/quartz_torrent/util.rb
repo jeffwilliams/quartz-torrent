@@ -71,7 +71,7 @@ module QuartzTorrent
 
   # Log backtraces of all threads currently running. The threads are logged to the 
   # passed io, or if that's nil they are written to the logger named 'util' at error level.
-  def self.logBacktraces(io)
+  def self.logBacktraces(io = nil)
     logger = nil
     logger = LogManager.getLogger("util") if ! io
     isLinux = RUBY_PLATFORM.downcase.include?("linux")

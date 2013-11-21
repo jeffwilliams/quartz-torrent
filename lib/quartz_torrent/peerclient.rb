@@ -13,6 +13,7 @@ require "quartz_torrent/piecemanagerrequestmetadata.rb"
 require "quartz_torrent/metainfopiecestate.rb"
 require "quartz_torrent/extension.rb"
 require "quartz_torrent/magnet.rb"
+require "quartz_torrent/torrentqueue.rb"
 
 
 module QuartzTorrent
@@ -161,6 +162,8 @@ module QuartzTorrent
     attr_reader :metainfoCompletedLength
     # Whether or not the torrent is paused.
     attr_reader :paused
+    # Whether or not the torrent is queued.
+    attr_reader :queued
     # After we have completed downloading a torrent, we will continue to upload until we have 
     # uploaded ratio * torrent_size bytes. If nil, no limit on upload.
     attr_accessor :ratio
@@ -210,6 +213,7 @@ module QuartzTorrent
       @state = torrentData.state
       @metainfoLength = nil
       @paused = torrentData.paused
+      @queued = torrentData.queued
       @metainfoCompletedLength = nil
       if torrentData.metainfoPieceState && torrentData.state == :downloading_metainfo
         @metainfoLength = torrentData.metainfoPieceState.metainfoLength
@@ -244,9 +248,10 @@ module QuartzTorrent
   # This class implements a Reactor Handler object. This Handler implements the PeerClient.
   class PeerClientHandler < QuartzTorrent::Handler
   
-    def initialize(baseDirectory)
+    def initialize(baseDirectory, maxIncomplete = 5, maxActive = 10)
       # Hash of TorrentData objects, keyed by torrent infoHash
       @torrentData = {}
+      @torrentQueue = TorrentQueue.new(maxIncomplete, maxActive)
 
       @baseDirectory = baseDirectory
 
@@ -303,7 +308,10 @@ module QuartzTorrent
         torrentData.checkMetadataPieceManagerTimer =
           @reactor.scheduleTimer(@requestBlocksPeriod, [:check_metadata_piece_manager, infoHash], true, false)
       end
-      
+
+      queue(torrentData)
+      dequeue      
+
       torrentData
     end
 
@@ -317,7 +325,7 @@ module QuartzTorrent
     # Pause or unpause the specified torrent.
     def setPaused(infoHash, value)
       # Can't do this right now, since it could be in use by an event handler. Use an immediate, non-recurring timer instead.
-      @logger.info "Scheduling immediate timer to pause torrent #{QuartzTorrent.bytesToHex(infoHash)}."
+      @logger.info "Scheduling immediate timer to #{value ? "pause" : "unpause"} torrent #{QuartzTorrent.bytesToHex(infoHash)}."
       @reactor.scheduleTimer(0, [:pausetorrent, infoHash, value], false, true)
     end
 
@@ -965,6 +973,8 @@ module QuartzTorrent
           @logger.info "Download of #{QuartzTorrent.bytesToHex(infoHash)} complete."
           torrentData.state = :uploading
           torrentData.downloadCompletedTime = Time.new
+
+          dequeue
         end
       end
 
@@ -1564,6 +1574,8 @@ module QuartzTorrent
           end
         end
       end
+
+      dequeue
     end
 
     # Pause or unpause a torrent that we are downloading.
@@ -1578,34 +1590,45 @@ module QuartzTorrent
 
       torrentData.paused = value
 
-      setFrozen infoHash, value if ! torrentData.queued
-    end
-
-    # Queue or unqueue a torrent
-    def handleQueue(infoHash, value)
-      torrentData = @torrentData[infoHash]
-      if ! torrentData
-        @logger.warn "Asked to queue a non-existent torrent #{QuartzTorrent.bytesToHex(infoHash)}"
-        return
+      if !value
+        # On unpause, queue the torrent since there might not be room for it to run
+        queue(torrentData)
       end
-      
-      return if torrentData.queued == value
-      
-      torrentData.queued = value
 
-TODO: queue torrent here
+      setFrozen infoHash, value if ! torrentData.queued
 
-      setFrozen infoHash, value if ! torrentData.paused
+      dequeue
     end
 
+    # Queue a torrent
+    def queue(torrentData)
+      return if torrentData.queued
+      
+      # Queue the torrent
+      @torrentQueue.push torrentData
+
+      setFrozen torrentData, true if ! torrentData.paused
+    end
+    
+    # Dequeue any torrents that can now run based on available space
+    def dequeue
+      torrents = @torrentQueue.dequeue(@torrentData.values)
+      torrents.each do |torrentData|
+        setFrozen torrentData, false if ! torrentData.paused
+      end
+    end
 
     # Freeze or unfreeze a torrent. If value is true, then we disconnect from all peers for this torrent and forget 
     # the peers. If value is false, we start reconnecting to peers.
-    def setFrozen(infoHash, value)
-      torrentData = @torrentData[infoHash]
-      if ! torrentData
-        @logger.warn "Asked to freeze a non-existent torrent #{QuartzTorrent.bytesToHex(infoHash)}"
-        return
+    # Parameter torrent can be an infoHash or TorrentData
+    def setFrozen(torrent, value)
+      torrentData = torrent
+      if ! torrent.is_a?(TorrentData)
+        torrentData = @torrentData[torrent]
+        if ! torrentData
+          @logger.warn "Asked to freeze a non-existent torrent #{QuartzTorrent.bytesToHex(torrent)}"
+          return
+        end
       end
 
       if value
@@ -1629,7 +1652,6 @@ TODO: queue torrent here
 
     end
     
-
   end
 
   # Represents a client that talks to bittorrent peers. This is the main class used to download and upload

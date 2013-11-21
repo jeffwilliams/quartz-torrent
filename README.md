@@ -128,8 +128,7 @@ To-Do
 
     - On add: queue torrent, and perform On Event steps
     - On complete: perform On Event steps
-    - On upload limit reached: Pause torrent. perform On Event steps
-    - On pause:                Pause torrent. perform On Event steps
+    - On pause/On upload limit reached: Pause torrent. perform On Event steps
     - On unpause:              queue torrent at head of queue, and perform On Event steps
     - On delete: delete torrent, and perform On Event steps
 

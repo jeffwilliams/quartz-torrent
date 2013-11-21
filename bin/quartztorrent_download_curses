@@ -128,7 +128,7 @@ class SummaryScreen < Screen
   end
 
   private
-  def summaryLine(state, paused, size, uploadRate, downloadRate, complete, total, progress)
+  def summaryLine(state, paused, queued, size, uploadRate, downloadRate, complete, total, progress)
     if state == :downloading_metainfo
       "     %12s  Rate: %6s | %6s  Bytes: %4d/%4d Progress: %5s\n" % [state, uploadRate, downloadRate, complete, total, progress]
     else
@@ -136,8 +136,9 @@ class SummaryScreen < Screen
       secondaryState = ""
       if state == :running && complete == total
         secondaryState = "(completed)"
-      elsif (state == :running || state == :uploading) && paused
-        secondaryState = "(paused)"
+      elsif (state == :running || state == :uploading)
+        secondaryState += "(paused)" if paused
+        secondaryState += "(queued)" if queued
       end
       state = "#{primaryState} #{secondaryState}"
       "     %12s  %9s  Rate: %6s | %6s  Pieces: %4d/%4d Progress: %5s\n" % [state, size, uploadRate, downloadRate, complete, total, progress]
@@ -189,6 +190,7 @@ class SummaryScreen < Screen
       display.push summaryLine(
         state,
         torrent.paused,
+        torrent.queued,
         Formatter.formatSize(dataLength),
         Formatter.formatSpeed(torrent.uploadRate),
         Formatter.formatSpeed(torrent.downloadRate),
