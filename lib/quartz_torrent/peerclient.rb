@@ -255,6 +255,8 @@ module QuartzTorrent
       @endgameBlockThreshold = 20
     end
 
+    ################################################ PUBLIC API METHODS ################################################ 
+
     attr_reader :torrentData
 
     # Add a new tracker client. This effectively adds a new torrent to download. Returns the TorrentData object for the 
@@ -383,6 +385,34 @@ module QuartzTorrent
 
       torrentData.uploadDuration = seconds
     end
+
+    # Get a hash of new TorrentDataDelegate objects keyed by torrent infohash.
+    # This method is meant to be called from a different thread than the one
+    # the reactor is running in. This method is not immediate but blocks until the
+    # data is prepared. 
+    # If infoHash is passed, only that torrent data is returned (still in a hashtable; just one entry)
+    def getDelegateTorrentData(infoHash = nil)
+      # Use an immediate, non-recurring timer.
+      result = {}
+      return result if stopped?
+      semaphore = Semaphore.new
+      @reactor.scheduleTimer(0, [:get_torrent_data, result, semaphore, infoHash], false, true)
+      semaphore.wait
+      result
+    end
+
+    # Update the data stored in a TorrentDataDelegate to the latest information.
+    def updateDelegateTorrentData(delegate)
+      return if stopped?
+      # Use an immediate, non-recurring timer.
+      semaphore = Semaphore.new
+      @reactor.scheduleTimer(0, [:update_torrent_data, delegate, semaphore], false, true)
+      semaphore.wait
+      result
+    end
+
+
+    ################################################ REACTOR METHODS ################################################ 
 
     # Reactor method called when a peer has connected to us.
     def serverInit(metadata, addr, port)
@@ -660,30 +690,7 @@ module QuartzTorrent
       close
     end
     
-    # Get a hash of new TorrentDataDelegate objects keyed by torrent infohash.
-    # This method is meant to be called from a different thread than the one
-    # the reactor is running in. This method is not immediate but blocks until the
-    # data is prepared. 
-    # If infoHash is passed, only that torrent data is returned (still in a hashtable; just one entry)
-    def getDelegateTorrentData(infoHash = nil)
-      # Use an immediate, non-recurring timer.
-      result = {}
-      return result if stopped?
-      semaphore = Semaphore.new
-      @reactor.scheduleTimer(0, [:get_torrent_data, result, semaphore, infoHash], false, true)
-      semaphore.wait
-      result
-    end
-
-    def updateDelegateTorrentData(delegate)
-      return if stopped?
-      # Use an immediate, non-recurring timer.
-      semaphore = Semaphore.new
-      @reactor.scheduleTimer(0, [:update_torrent_data, delegate, semaphore], false, true)
-      semaphore.wait
-      result
-    end
-
+    ################################################ PRIVATE METHODS ################################################ 
     private
     def setPeerDisconnected(peer)
       peer.state = :disconnected
