@@ -134,14 +134,10 @@ class SummaryScreen < Screen
     else
       primaryState = state.to_s
       secondaryState = ""
-      if state == :running && complete == total
-        secondaryState = "(completed)"
-      elsif (state == :running || state == :uploading)
-        secondaryState += "(paused)" if paused
-        secondaryState += "(queued)" if queued
-      end
+      secondaryState += "(paused)" if paused
+      secondaryState += "(queued)" if queued
       state = "#{primaryState} #{secondaryState}"
-      "     %12s  %9s  Rate: %6s | %6s  Pieces: %4d/%4d Progress: %5s\n" % [state, size, uploadRate, downloadRate, complete, total, progress]
+      "     %14s  %9s  Rate: %6s | %6s  Pieces: %4d/%4d Progress: %5s\n" % [state, size, uploadRate, downloadRate, complete, total, progress]
     end
   end
 
@@ -607,17 +603,6 @@ def initializeLogging(file)
     setLogfile file
     setDefaultLevel :info
   end
-  LogManager.setLevel "peer_manager", :debug
-  LogManager.setLevel "tracker_client", :debug
-  LogManager.setLevel "http_tracker_client", :debug
-  LogManager.setLevel "udp_tracker_client", :debug
-  LogManager.setLevel "peerclient", :debug
-  LogManager.setLevel "peerclient.reactor", :info
-  #LogManager.setLevel "peerclient.reactor", :debug
-  LogManager.setLevel "blockstate", :debug
-  LogManager.setLevel "piecemanager", :info
-  LogManager.setLevel "peerholder", :debug
-  #LogManager.setLevel "peermsg_serializer", :debug
 end
 
 def help
@@ -660,6 +645,8 @@ class Settings
     @downloadLimit = nil
     @uploadRatio = nil
     @logfile = "/tmp/download_torrent_curses.log"
+    @maxIncomplete = 5
+    @maxActive = 10
   end
 
   attr_accessor :baseDirectory
@@ -669,6 +656,20 @@ class Settings
   attr_accessor :uploadRatio
   attr_accessor :logfile
   attr_accessor :debugTTY
+  attr_accessor :maxIncomplete
+  attr_accessor :maxActive
+
+  def validate
+    if @maxIncomplete > @maxActive
+      puts "Max number of incomplete torrents must be <= Max number of active torrents"
+      return false
+    end
+    if @maxActive <= 0 || @maxIncomplete <= 0
+      puts "Max number of incomplete torrents and max number of active torrents must both be > 0"
+      return false
+    end
+    true
+  end
 end
 
 class PeerClient
@@ -704,6 +705,8 @@ begin
     [ '--help', '-h', GetoptLong::NO_ARGUMENT],
     [ '--ratio', '-r', GetoptLong::REQUIRED_ARGUMENT],
     [ '--debug-tty', '-t', GetoptLong::REQUIRED_ARGUMENT],
+    [ '--queue-max-incomplete', '-i', GetoptLong::REQUIRED_ARGUMENT],
+    [ '--queue-max-active', '-a', GetoptLong::REQUIRED_ARGUMENT],
   )
 
   opts.each do |opt, arg|
@@ -722,14 +725,18 @@ begin
       $settings.uploadRatio = arg.to_f
     elsif opt == '--debug-tty'
       $log = File.open arg, "w"
+    elsif opt == '--queue-max-incomplete'
+      $settings.maxIncomplete = arg.to_i
+    elsif opt == '--queue-max-active'
+      $settings.maxActive = arg.to_i
     end
   end
+  exit 1 if ! $settings.validate
 
   torrents = ARGV
 
   $log = File.open("/dev/null","w") if $log == $stdout
   
-
   initializeCurses
   cursesInitialized = true
   initializeLogging($settings.logfile)
@@ -745,7 +752,7 @@ begin
   scrManager.add :add, AddScreen.new(Ncurses::stdscr)
   scrManager.set :summary
 
-  peerclient = QuartzTorrent::PeerClient.new($settings.baseDirectory)
+  peerclient = QuartzTorrent::PeerClient.new($settings.baseDirectory, $settings.maxIncomplete, $settings.maxActive)
   peerclient.port = $settings.port
 
   torrents.each do |torrent|
@@ -771,7 +778,6 @@ begin
 
   RubyProf.start if $doProfiling
 
-  #puts "Starting peer client"
   peerclient.start
 
   while running
