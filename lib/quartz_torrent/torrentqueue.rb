@@ -72,20 +72,20 @@ module QuartzTorrent
     def size
       @queue.size
     end
-  end
 
-  private
+    private
 
-  def incomplete?(torrentData)
-    torrentData.state != :uploading
-  end
+    def incomplete?(torrentData)
+      torrentData.state != :uploading
+    end
 
-  def dequeueFirstMatching
-    index = @queue.index{ |torrentData| yield(torrentData) }
-    if index
-      @queue.delete_at index
-    else
-      nil
+    def dequeueFirstMatching
+      index = @queue.index{ |torrentData| yield(torrentData) }
+      if index
+        @queue.delete_at index
+      else
+        nil
+      end
     end
   end
 end
