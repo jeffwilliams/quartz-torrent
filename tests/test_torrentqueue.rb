@@ -50,6 +50,7 @@ class TestTorrentqueue < MiniTest::Unit::TestCase
       FakeTorrentData.new(false,true,:error),
     ]
     torrents.each{ |t| tq.push t }
+    torrents.each{ |t| assert t.queued }
     assert_equal 4, tq.dequeue(torrents).size
 
     # Check that we only dequeue 4 torrents even though >4 are in queue
@@ -165,6 +166,31 @@ class TestTorrentqueue < MiniTest::Unit::TestCase
     torrents.first.paused = false  
     tq.push torrents.first
     assert_equal 1, tq.dequeue(torrents).size
+    
+    # Test that if we have 2 torrents running, and 2 more waiting to run, and then
+    # we pause a running torrent, and then later unpause it, it fails to unpause 
+    # because there are already 2 running torrents
+    tq = TorrentQueue.new(2,4)
+    torrents = [
+      FakeTorrentData.new(false,false,:running),
+      FakeTorrentData.new(false,false,:running),
+    ]   
+    to_queue = [
+      FakeTorrentData.new(false,false,:running),
+      FakeTorrentData.new(false,false,:running),
+    ] 
+
+    to_queue.each{ |t| tq.push t }
+    assert_equal 0, tq.dequeue(torrents).size # No space to run.
+
+    # Pause
+    torrents.first.paused = true
+    assert_equal 1, tq.dequeue(torrents).size # One space
+    
+    # Unpause
+    torrents.first.paused = false
+    tq.unshift torrents.first
+    assert_equal 0, tq.dequeue(torrents).size # No space to run
   end
  
   def testUnqueueComplete
@@ -174,10 +200,8 @@ class TestTorrentqueue < MiniTest::Unit::TestCase
     ]
     tq.push torrents.first
     assert_equal 1, tq.dequeue(torrents).size
-
-
   end
-  
+
 end
 
 

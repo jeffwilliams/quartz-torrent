@@ -83,6 +83,7 @@ module QuartzTorrent
     attr_accessor :bytesDownloaded
     attr_accessor :bytesUploaded
     # State of the torrent. Is one of the following states:
+    #   :initializing           Datastructures have been created, but no work started.
     #   :checking_pieces        Checking piece hashes on startup
     #   :downloading_metainfo   Downloading the torrent metainfo
     #   :uploading              The torrent is complete and we are only uploading
@@ -279,35 +280,8 @@ module QuartzTorrent
       raise "There is already a tracker registered for torrent #{QuartzTorrent.bytesToHex(infoHash)}" if @torrentData.has_key? infoHash
       torrentData = TorrentData.new(infoHash, info, trackerclient)
       @torrentData[infoHash] = torrentData
-
-      # If we already have the metainfo info for this torrent, we can begin checking the pieces. 
-      # If we don't have the metainfo info then we need to get the metainfo first.
-      if ! info
-        info = MetainfoPieceState.downloaded(@baseDirectory, torrentData.infoHash)
-        torrentData.info = info
-      end
-
-      if info
-        startCheckingPieces torrentData
-      else
-        # Request the metainfo from peers.
-        torrentData.state = :downloading_metainfo
-
-        @logger.info "Downloading metainfo"
-        #torrentData.metainfoPieceState = MetainfoPieceState.new(@baseDirectory, infoHash, )
-
-        # Schedule peer connection management. Recurring and immediate 
-        torrentData.managePeersTimer = 
-          @reactor.scheduleTimer(@managePeersPeriod, [:manage_peers, torrentData.infoHash], true, true)
-
-        # Schedule a timer for requesting metadata pieces from peers.
-        torrentData.metainfoRequestTimer = 
-          @reactor.scheduleTimer(@requestBlocksPeriod, [:request_metadata_pieces, infoHash], true, false)
-
-        # Schedule checking for metainfo PieceManager results (including when piece reading completes)
-        torrentData.checkMetadataPieceManagerTimer =
-          @reactor.scheduleTimer(@requestBlocksPeriod, [:check_metadata_piece_manager, infoHash], true, false)
-      end
+      torrentData.info = info
+      torrentData.state = :initializing
 
       queue(torrentData)
       dequeue      
@@ -815,7 +789,7 @@ module QuartzTorrent
         return
       end
 
-      return if torrentData.paused
+      return if torrentData.paused || torrentData.queued
 
       trackerclient = torrentData.trackerClient
 
@@ -864,7 +838,7 @@ module QuartzTorrent
         return
       end
 
-      return if torrentData.paused
+      return if torrentData.paused || torrentData.queued
 
       classifiedPeers = ClassifiedPeers.new torrentData.peers.all
 
@@ -989,7 +963,7 @@ module QuartzTorrent
         return
       end
       
-      return if torrentData.paused
+      return if torrentData.paused || torrentData.queued
 
       # We may not have completed the extended handshake with the peer which specifies the torrent size.
       # In this case torrentData.metainfoPieceState is not yet set.
@@ -1314,6 +1288,36 @@ module QuartzTorrent
       end
     end
  
+    # Take a torrent that is in the :initializing state and make it go.
+    def initTorrent(torrentData)
+      # If we already have the metainfo info for this torrent, we can begin checking the pieces. 
+      # If we don't have the metainfo info then we need to get the metainfo first.
+      if ! torrentData.info
+        torrentData.info = MetainfoPieceState.downloaded(@baseDirectory, torrentData.infoHash)
+      end
+
+      if torrentData.info
+        startCheckingPieces torrentData
+      else
+        # Request the metainfo from peers.
+        torrentData.state = :downloading_metainfo
+
+        @logger.info "Downloading metainfo"
+
+        # Schedule peer connection management. Recurring and immediate 
+        torrentData.managePeersTimer = 
+          @reactor.scheduleTimer(@managePeersPeriod, [:manage_peers, torrentData.infoHash], true, true)
+
+        # Schedule a timer for requesting metadata pieces from peers.
+        torrentData.metainfoRequestTimer = 
+          @reactor.scheduleTimer(@requestBlocksPeriod, [:request_metadata_pieces, infoHash], true, false)
+
+        # Schedule checking for metainfo PieceManager results (including when piece reading completes)
+        torrentData.checkMetadataPieceManagerTimer =
+          @reactor.scheduleTimer(@requestBlocksPeriod, [:check_metadata_piece_manager, infoHash], true, false)
+      end
+    end
+
     # Start the actual torrent download. This method schedules the necessary timers and registers the necessary listeners
     # and changes the state to :running. It is meant to be called after checking for existing pieces or downloading the 
     # torrent metadata (if this is a magnet link torrent)
@@ -1591,8 +1595,9 @@ module QuartzTorrent
       torrentData.paused = value
 
       if !value
-        # On unpause, queue the torrent since there might not be room for it to run
-        queue(torrentData)
+        # On unpause, queue the torrent since there might not be room for it to run.
+        # Make sure it goes to the head of the queue.
+        queue(torrentData, :unshift)
       end
 
       setFrozen infoHash, value if ! torrentData.queued
@@ -1601,11 +1606,15 @@ module QuartzTorrent
     end
 
     # Queue a torrent
-    def queue(torrentData)
+    def queue(torrentData, mode = :queue)
       return if torrentData.queued
       
       # Queue the torrent
-      @torrentQueue.push torrentData
+      if mode == :unshift
+        @torrentQueue.unshift torrentData
+      else
+        @torrentQueue.push torrentData
+      end
 
       setFrozen torrentData, true if ! torrentData.paused
     end
@@ -1614,7 +1623,11 @@ module QuartzTorrent
     def dequeue
       torrents = @torrentQueue.dequeue(@torrentData.values)
       torrents.each do |torrentData|
-        setFrozen torrentData, false if ! torrentData.paused
+        if torrentData.state == :initializing
+          initTorrent torrentData
+        else
+          setFrozen torrentData, false if ! torrentData.paused
+        end
       end
     end
 
@@ -1659,14 +1672,14 @@ module QuartzTorrent
   class PeerClient 
 
     # Create a new PeerClient that will save and load torrent data under the specified baseDirectory.
-    def initialize(baseDirectory)
+    def initialize(baseDirectory, maxIncomplete = 5, maxActive = 10)
       @port = 9998
       @handler = nil
       @stopped = true
       @reactor = nil
       @logger = LogManager.getLogger("peerclient")
       @worker = nil
-      @handler = PeerClientHandler.new baseDirectory
+      @handler = PeerClientHandler.new baseDirectory, maxIncomplete, maxActive
       @reactor = QuartzTorrent::Reactor.new(@handler, LogManager.getLogger("peerclient.reactor"))
       @toStart = []
     end

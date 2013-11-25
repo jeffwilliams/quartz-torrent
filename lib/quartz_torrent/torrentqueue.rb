@@ -77,7 +77,7 @@ module QuartzTorrent
   private
 
   def incomplete?(torrentData)
-    torrentData.state == :running || torrentData.state == :checking_pieces || torrentData.state == :downloading_metainfo || torrentData.state == :error
+    torrentData.state != :uploading
   end
 
   def dequeueFirstMatching
