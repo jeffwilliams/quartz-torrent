@@ -1310,11 +1310,11 @@ module QuartzTorrent
 
         # Schedule a timer for requesting metadata pieces from peers.
         torrentData.metainfoRequestTimer = 
-          @reactor.scheduleTimer(@requestBlocksPeriod, [:request_metadata_pieces, infoHash], true, false)
+          @reactor.scheduleTimer(@requestBlocksPeriod, [:request_metadata_pieces, torrentData.infoHash], true, false)
 
         # Schedule checking for metainfo PieceManager results (including when piece reading completes)
         torrentData.checkMetadataPieceManagerTimer =
-          @reactor.scheduleTimer(@requestBlocksPeriod, [:check_metadata_piece_manager, infoHash], true, false)
+          @reactor.scheduleTimer(@requestBlocksPeriod, [:check_metadata_piece_manager, torrentData.infoHash], true, false)
       end
     end
 
@@ -1691,6 +1691,7 @@ module QuartzTorrent
     # If listening fails, an exception of class Errno::EADDRINUSE is thrown.
     def start 
       return if ! @stopped
+      @logger.info "Starting"
 
       @reactor.listen("0.0.0.0",@port,:listener_socket)
 
