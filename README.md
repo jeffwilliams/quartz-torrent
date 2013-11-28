@@ -107,7 +107,6 @@ To-Do
   - Improve CPU usage. 
   - Refactor Metadata.Info into it's own independent class.
   - Improve Documentation
-  - In peerclient, prefix log messages with torrent infohash, or (truncated) torrent name
   - Implement uTP
     - <http://www.bittorrent.org/beps/bep_0029.html#packet-sizes>
     - <https://forum.utorrent.com/viewtopic.php?id=76640>

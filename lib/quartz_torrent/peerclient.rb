@@ -292,14 +292,14 @@ module QuartzTorrent
     # Remove a torrent.
     def removeTorrent(infoHash, deleteFiles = false)
       # Can't do this right now, since it could be in use by an event handler. Use an immediate, non-recurring timer instead.
-      @logger.info "Scheduling immediate timer to remove torrent #{QuartzTorrent.bytesToHex(infoHash)}. #{deleteFiles ? "Will" : "Wont"} delete downloaded files."
+      @logger.info "#{QuartzTorrent.bytesToHex(infoHash)}: Scheduling immediate timer to remove torrent. #{deleteFiles ? "Will" : "Wont"} delete downloaded files."
       @reactor.scheduleTimer(0, [:removetorrent, infoHash, deleteFiles], false, true)
     end
 
     # Pause or unpause the specified torrent.
     def setPaused(infoHash, value)
       # Can't do this right now, since it could be in use by an event handler. Use an immediate, non-recurring timer instead.
-      @logger.info "Scheduling immediate timer to #{value ? "pause" : "unpause"} torrent #{QuartzTorrent.bytesToHex(infoHash)}."
+      @logger.info "#{QuartzTorrent.bytesToHex(infoHash)}: Scheduling immediate timer to #{value ? "pause" : "unpause"} torrent."
       @reactor.scheduleTimer(0, [:pausetorrent, infoHash, value], false, true)
     end
 
@@ -709,7 +709,7 @@ module QuartzTorrent
       return false if !torrentData
 
       if msg.peerId == torrentData.trackerClient.peerId
-        @logger.info "We connected to ourself. Closing connection."
+        @logger.info "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: We connected to ourself. Closing connection."
         peer.isUs = true
         close
         return
@@ -719,7 +719,7 @@ module QuartzTorrent
       if peers
         peers.each do |existingPeer|
           if existingPeer.state == :connected
-            @logger.warn "Peer with id #{msg.peerId} created a new connection when we already have a connection in state #{existingPeer.state}. Closing new connection."
+            @logger.warn "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Peer with id #{msg.peerId} created a new connection when we already have a connection in state #{existingPeer.state}. Closing new connection."
             torrentData.peers.delete existingPeer
             setPeerDisconnected(peer)
             close
@@ -735,12 +735,12 @@ module QuartzTorrent
         peer.bitfield = Bitfield.new(torrentData.info.pieces.length)
       else
         peer.bitfield = EmptyBitfield.new
-        @logger.info "We have no metainfo yet, so setting peer #{peer} to have an EmptyBitfield"
+        @logger.info "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: We have no metainfo yet, so setting peer #{peer} to have an EmptyBitfield"
       end
 
       # Send extended handshake if the peer supports extensions
       if (msg.reserved.unpack("C8")[5] & 0x10) != 0
-        @logger.warn "Peer supports extensions. Sending extended handshake"
+        @logger.warn "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Peer supports extensions. Sending extended handshake"
         extended = Extension.createExtendedHandshake torrentData.info
         extended.serializeTo currentIo
       end
@@ -765,7 +765,7 @@ module QuartzTorrent
     end
 
     def updatePeerWithHandshakeInfo(torrentData, msg, peer)
-      @logger.info "peer #{peer} sent valid handshake for torrent #{QuartzTorrent.bytesToHex(torrentData.infoHash)}"
+      @logger.info "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: peer #{peer} sent valid handshake for torrent #{QuartzTorrent.bytesToHex(torrentData.infoHash)}"
       peer.infoHash = msg.infoHash
       # If this was a peer we got from a tracker that had no id then we only learn the id on handshake.
       peer.trackerPeer.id = msg.peerId
@@ -800,19 +800,19 @@ module QuartzTorrent
 
       manager = torrentData.peerManager
       if ! manager
-        @logger.error "Manage peers: peer manager client for torrent #{QuartzTorrent.bytesToHex(infoHash)} not found."
+        @logger.error "#{QuartzTorrent.bytesToHex(infoHash)}: Manage peers: peer manager client for torrent #{QuartzTorrent.bytesToHex(infoHash)} not found."
         return
       end
 
       toConnect = manager.manageConnections(classifiedPeers)
       toConnect.each do |peer|
-        @logger.debug "Connecting to peer #{peer}"
+        @logger.debug "#{QuartzTorrent.bytesToHex(infoHash)}: Connecting to peer #{peer}"
         connect peer.trackerPeer.ip, peer.trackerPeer.port, peer
       end
 
       manageResult = manager.managePeers(classifiedPeers)
       manageResult.unchoke.each do |peer|
-        @logger.debug "Unchoking peer #{peer}"
+        @logger.debug "#{QuartzTorrent.bytesToHex(infoHash)}: Unchoking peer #{peer}"
         withPeersIo(peer, "unchoking peer") do |io|
           msg = Unchoke.new
           sendMessageToPeer msg, io, peer
@@ -821,7 +821,7 @@ module QuartzTorrent
       end
 
       manageResult.choke.each do |peer|
-        @logger.debug "Choking peer #{peer}"
+        @logger.debug "#{QuartzTorrent.bytesToHex(infoHash)}: Choking peer #{peer}"
         withPeersIo(peer, "choking peer") do |io|
           msg = Choke.new
           sendMessageToPeer msg, io, peer
@@ -843,21 +843,21 @@ module QuartzTorrent
       classifiedPeers = ClassifiedPeers.new torrentData.peers.all
 
       if ! torrentData.blockState
-        @logger.error "Request blocks peers: no blockstate yet."
+        @logger.error "#{QuartzTorrent.bytesToHex(infoHash)}: Request blocks peers: no blockstate yet."
         return
       end
 
       if torrentData.state == :uploading && !torrentData.paused
         if torrentData.ratio
           if torrentData.bytesUploadedDataOnly >= torrentData.ratio*torrentData.blockState.totalLength
-            @logger.info "Pausing torrent due to upload ratio limit." if torrentData.metainfoPieceState.complete?
+            @logger.info "#{QuartzTorrent.bytesToHex(infoHash)}: Pausing torrent due to upload ratio limit." if torrentData.metainfoPieceState.complete?
             setPaused(infoHash, true)
             return
           end
         end
         if torrentData.uploadDuration && torrentData.downloadCompletedTime
           if Time.new > torrentData.downloadCompletedTime + torrentData.uploadDuration
-            @logger.info "Pausing torrent due to upload duration being reached." if torrentData.metainfoPieceState.complete?
+            @logger.info "#{QuartzTorrent.bytesToHex(infoHash)}: Pausing torrent due to upload duration being reached." if torrentData.metainfoPieceState.complete?
             setPaused(infoHash, true)
             return
           end
@@ -869,7 +869,7 @@ module QuartzTorrent
         blocks = torrentData.blockState.completeBlockBitfield
         set = blocks.countSet
         if set >= blocks.length - @endgameBlockThreshold && set < blocks.length
-          @logger.info "Entering endgame mode: blocks #{set}/#{blocks.length} complete."
+          @logger.info "#{QuartzTorrent.bytesToHex(infoHash)}: Entering endgame mode: blocks #{set}/#{blocks.length} complete."
           torrentData.isEndgame = true
         end
       elsif torrentData.isEndgame && torrentData.state != :running
@@ -883,7 +883,7 @@ module QuartzTorrent
           toDelete.push blockIndex if (Time.new - requestTime) > @requestTimeout
         end
         toDelete.each do |blockIndex|
-          @logger.debug "Block #{blockIndex} request timed out."
+          @logger.debug "#{QuartzTorrent.bytesToHex(infoHash)}: Block #{blockIndex} request timed out."
           blockInfo = torrentData.blockState.createBlockinfoByBlockIndex(blockIndex)
           torrentData.blockState.setBlockRequested blockInfo, false
           peer.requestedBlocks.delete blockIndex
@@ -933,7 +933,7 @@ module QuartzTorrent
               sendMessageToPeer msg, io, peer
               peer.amInterested = true
             end
-            @logger.debug "Requesting block from #{peer}: piece #{blockInfo.pieceIndex} offset #{blockInfo.offset} length #{blockInfo.length}"
+            @logger.debug "#{QuartzTorrent.bytesToHex(infoHash)}: Requesting block from #{peer}: piece #{blockInfo.pieceIndex} offset #{blockInfo.offset} length #{blockInfo.length}"
             msg = blockInfo.getRequest
             sendMessageToPeer msg, io, peer
             torrentData.blockState.setBlockRequested blockInfo, true
@@ -944,7 +944,7 @@ module QuartzTorrent
 
       if blockInfos.size == 0
         if torrentData.state != :uploading && torrentData.blockState.completePieceBitfield.allSet?
-          @logger.info "Download of #{QuartzTorrent.bytesToHex(infoHash)} complete."
+          @logger.info "#{QuartzTorrent.bytesToHex(infoHash)}: Download complete."
           torrentData.state = :uploading
           torrentData.downloadCompletedTime = Time.new
 
@@ -969,7 +969,7 @@ module QuartzTorrent
       # In this case torrentData.metainfoPieceState is not yet set.
       return if ! torrentData.metainfoPieceState
 
-      @logger.info "Obtained all pieces of metainfo." if torrentData.metainfoPieceState.complete?
+      @logger.info "#{QuartzTorrent.bytesToHex(infoHash)}: Obtained all pieces of metainfo." if torrentData.metainfoPieceState.complete?
 
       pieces = torrentData.metainfoPieceState.findRequestablePieces
       classifiedPeers = ClassifiedPeers.new torrentData.peers.all
@@ -984,11 +984,11 @@ module QuartzTorrent
           withPeersIo(peers.first, "requesting metadata piece") do |io|
             sendMessageToPeer msg, io, peers.first
             torrentData.metainfoPieceState.setPieceRequested(pieceIndex, true)
-            @logger.debug "Requesting metainfo piece from #{peers.first}: piece #{pieceIndex}"
+            @logger.debug "#{QuartzTorrent.bytesToHex(infoHash)}: Requesting metainfo piece from #{peers.first}: piece #{pieceIndex}"
           end
         end
       else
-        @logger.error "No peers found that have metadata."
+        @logger.error "#{QuartzTorrent.bytesToHex(infoHash)}: No peers found that have metadata."
       end
 
     end
@@ -1008,7 +1008,7 @@ module QuartzTorrent
       results.each do |result|
         metaData = torrentData.pieceManagerMetainfoRequestMetadata.delete(result.requestId)
         if ! metaData
-          @logger.error "Can't find metadata for PieceManager request #{result.requestId}"
+          @logger.error "#{QuartzTorrent.bytesToHex(infoHash)}: Can't find metadata for PieceManager request #{result.requestId}"
           next
         end
 
@@ -1019,7 +1019,7 @@ module QuartzTorrent
           msg.piece = metaData.data.requestMsg.piece
           msg.data = result.data
           withPeersIo(metaData.data.peer, "sending extended metainfo piece message") do |io|
-            @logger.debug "Sending metainfo piece to #{metaData.data.peer}: piece #{msg.piece} with data length #{msg.data.length}"
+            @logger.debug "#{QuartzTorrent.bytesToHex(infoHash)}: Sending metainfo piece to #{metaData.data.peer}: piece #{msg.piece} with data length #{msg.data.length}"
             sendMessageToPeer msg, io, metaData.data.peer
           end
           result.data
@@ -1027,7 +1027,7 @@ module QuartzTorrent
       end
 
       if torrentData.metainfoPieceState.complete? && torrentData.state == :downloading_metainfo
-        @logger.info "Obtained all pieces of metainfo. Will begin checking existing pieces."
+        @logger.info "#{QuartzTorrent.bytesToHex(infoHash)}: Obtained all pieces of metainfo. Will begin checking existing pieces."
         torrentData.metainfoPieceState.flush
         # We don't need to download metainfo anymore.
         cancelTimer torrentData.metainfoRequestTimer if torrentData.metainfoRequestTimer
@@ -1036,7 +1036,7 @@ module QuartzTorrent
           torrentData.info = info
           startCheckingPieces torrentData
         else
-          @logger.error "Metadata download is complete but reading the metadata failed"
+          @logger.error "#{QuartzTorrent.bytesToHex(infoHash)}: Metadata download is complete but reading the metadata failed"
           torrentData.state = :error
         end
       end
@@ -1050,19 +1050,19 @@ module QuartzTorrent
       end
 
       if ! torrentData.blockState
-        @logger.error "Receive piece: no blockstate yet."
+        @logger.error "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Receive piece: no blockstate yet."
         return
       end
 
       blockInfo = torrentData.blockState.createBlockinfoByPieceResponse(msg.pieceIndex, msg.blockOffset, msg.data.length)
 
       if ! peer.requestedBlocks.has_key?(blockInfo.blockIndex) 
-        @logger.debug "Receive piece: we either didn't request this piece, or it was already received due to endgame strategy. Ignoring this message."
+        @logger.debug "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Receive piece: we either didn't request this piece, or it was already received due to endgame strategy. Ignoring this message."
         return
       end
 
       if torrentData.blockState.blockCompleted?(blockInfo)
-        @logger.debug "Receive piece: we already have this block. Ignoring this message."
+        @logger.debug "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Receive piece: we already have this block. Ignoring this message."
         return
       end
       peer.requestedBlocks.delete blockInfo.blockIndex
@@ -1085,7 +1085,7 @@ module QuartzTorrent
               cancel.blockOffset = msg.blockOffset
               cancel.blockLength = msg.data.length
               sendMessageToPeer cancel, io, otherPeer
-              @logger.debug "Sending Cancel message to peer #{peer}"
+              @logger.debug "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Sending Cancel message to peer #{peer}"
             end
           end
         end
@@ -1105,7 +1105,7 @@ module QuartzTorrent
         return
       end
       if msg.blockLength <= 0
-        @logger.error "Request piece: peer requested block of length #{msg.blockLength} which is invalid."
+        @logger.error "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Request piece: peer requested block of length #{msg.blockLength} which is invalid."
         return
       end
 
@@ -1124,11 +1124,11 @@ module QuartzTorrent
       if torrentData.info
         peer.bitfield.length = torrentData.info.pieces.length
       else
-        @logger.warn "A peer connected and sent a bitfield but we don't know the length of the torrent yet. Assuming number of pieces is divisible by 8"
+        @logger.warn "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: A peer connected and sent a bitfield but we don't know the length of the torrent yet. Assuming number of pieces is divisible by 8"
       end
 
       if ! torrentData.blockState
-        @logger.warn "Bitfield: no blockstate yet."
+        @logger.warn "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Bitfield: no blockstate yet."
         return
       end
 
@@ -1137,7 +1137,7 @@ module QuartzTorrent
       needed.intersection!(peer.bitfield)
       if ! needed.allClear?
         if ! peer.amInterested
-          @logger.debug "Need some pieces from peer #{peer} so sending Interested message"
+          @logger.debug "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Need some pieces from peer #{peer} so sending Interested message"
           msg = Interested.new
           sendMessageToPeer msg, currentIo, peer
           peer.amInterested = true
@@ -1153,7 +1153,7 @@ module QuartzTorrent
       end
 
       if msg.pieceIndex >= peer.bitfield.length
-        @logger.warn "Peer #{peer} sent Have message with invalid piece index"
+        @logger.warn "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Peer #{peer} sent Have message with invalid piece index"
         return
       end
 
@@ -1161,13 +1161,13 @@ module QuartzTorrent
       peer.bitfield.set msg.pieceIndex
 
       if ! torrentData.blockState
-        @logger.warn "Have: no blockstate yet."
+        @logger.warn "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Have: no blockstate yet."
         return
       end
 
       # If we are interested in something from this peer, let them know.
       if ! torrentData.blockState.completePieceBitfield.set?(msg.pieceIndex)
-        @logger.debug "Peer #{peer} just got a piece we need so sending Interested message"
+        @logger.debug "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Peer #{peer} just got a piece we need so sending Interested message"
         msg = Interested.new
         sendMessageToPeer msg, currentIo, peer
         peer.amInterested = true
@@ -1187,24 +1187,24 @@ module QuartzTorrent
 
         metaData = torrentData.pieceManagerRequestMetadata.delete(result.requestId)
         if ! metaData
-          @logger.error "Can't find metadata for PieceManager request #{result.requestId}"
+          @logger.error "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Can't find metadata for PieceManager request #{result.requestId}"
           next
         end
       
         if metaData.type == :write
           if result.successful?
-            @logger.debug "Block written to disk. "
+            @logger.debug "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Block written to disk. "
             # Block successfully written!
             torrentData.blockState.setBlockCompleted metaData.data.pieceIndex, metaData.data.blockOffset, true do |pieceIndex|
               # The peice is completed! Check hash.
-              @logger.debug "Piece #{pieceIndex} is complete. Checking hash. "
+              @logger.debug "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Piece #{pieceIndex} is complete. Checking hash. "
               id = torrentData.pieceManager.checkPieceHash(metaData.data.pieceIndex)
               torrentData.pieceManagerRequestMetadata[id] = PieceManagerRequestMetadata.new(:hash, metaData.data.pieceIndex)
             end
           else
             # Block failed! Clear completed and requested state.
             torrentData.blockState.setBlockCompleted metaData.data.pieceIndex, metaData.data.blockOffset, false
-            @logger.error "Writing block failed: #{result.error}"
+            @logger.error "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Writing block failed: #{result.error}"
           end
         elsif metaData.type == :read
           if result.successful?
@@ -1215,21 +1215,21 @@ module QuartzTorrent
               msg.pieceIndex = readRequestMetadata.requestMsg.pieceIndex
               msg.blockOffset = readRequestMetadata.requestMsg.blockOffset
               msg.data = result.data
-              @logger.debug "Sending block to #{peer}: piece #{msg.pieceIndex} offset #{msg.blockOffset} length #{msg.data.length}"
+              @logger.debug "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Sending block to #{peer}: piece #{msg.pieceIndex} offset #{msg.blockOffset} length #{msg.data.length}"
               sendMessageToPeer msg, io, peer
               torrentData.bytesUploadedDataOnly += msg.data.length
-              @logger.debug "Sending piece to peer"
+              @logger.debug "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Sending piece to peer"
             end
           else
-            @logger.error "Reading block failed: #{result.error}"
+            @logger.error "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Reading block failed: #{result.error}"
           end
         elsif metaData.type == :hash
           if result.successful?
-            @logger.debug "Hash of piece #{metaData.data} is correct"
+            @logger.debug "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Hash of piece #{metaData.data} is correct"
             sendHaves(torrentData, metaData.data)
             sendUninterested(torrentData)
           else
-            @logger.info "Hash of piece #{metaData.data} is incorrect. Marking piece as not complete."
+            @logger.info "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Hash of piece #{metaData.data} is incorrect. Marking piece as not complete."
             torrentData.blockState.setPieceCompleted metaData.data, false
           end
         elsif metaData.type == :check_existing
@@ -1243,20 +1243,20 @@ module QuartzTorrent
     def handleCheckExistingResult(torrentData, pieceManagerResult)
       if pieceManagerResult.successful?
         existingBitfield = pieceManagerResult.data
-        @logger.info "We already have #{existingBitfield.countSet}/#{existingBitfield.length} pieces." 
+        @logger.info "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: We already have #{existingBitfield.countSet}/#{existingBitfield.length} pieces." 
 
         info = torrentData.info
        
         torrentData.blockState = BlockState.new(info, existingBitfield)
 
-        @logger.info "Starting torrent #{QuartzTorrent.bytesToHex(torrentData.infoHash)}. Information:"
-        @logger.info "  piece length:     #{info.pieceLen}"
-        @logger.info "  number of pieces: #{info.pieces.size}"
-        @logger.info "  total length      #{info.dataLength}"
+        @logger.info "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Starting torrent. Information:"
+        @logger.info "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}:   piece length:     #{info.pieceLen}"
+        @logger.info "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}:   number of pieces: #{info.pieces.size}"
+        @logger.info "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}:   total length      #{info.dataLength}"
 
         startDownload torrentData
       else
-        @logger.info "Checking existing pieces of torrent #{QuartzTorrent.bytesToHex(torrentData.infoHash)} failed: #{pieceManagerResult.error}"
+        @logger.info "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Checking existing pieces of torrent failed: #{pieceManagerResult.error}"
         torrentData.state = :error
       end
     end
@@ -1269,7 +1269,7 @@ module QuartzTorrent
       torrentData.pieceManager = QuartzTorrent::PieceManager.new(@baseDirectory, torrentData.info)
 
       torrentData.state = :checking_pieces
-      @logger.info "Checking pieces of torrent #{QuartzTorrent.bytesToHex(torrentData.infoHash)} asynchronously."
+      @logger.info "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Checking pieces of torrent #{QuartzTorrent.bytesToHex(torrentData.infoHash)} asynchronously."
       id = torrentData.pieceManager.findExistingPieces
       torrentData.pieceManagerRequestMetadata[id] = PieceManagerRequestMetadata.new(:check_existing, nil)
 
@@ -1302,7 +1302,7 @@ module QuartzTorrent
         # Request the metainfo from peers.
         torrentData.state = :downloading_metainfo
 
-        @logger.info "Downloading metainfo"
+        @logger.info "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Downloading metainfo"
 
         # Schedule peer connection management. Recurring and immediate 
         torrentData.managePeersTimer = 
@@ -1324,7 +1324,7 @@ module QuartzTorrent
     def startDownload(torrentData)
       # Add a listener for when the tracker's peers change.
       torrentData.peerChangeListener = Proc.new do
-        @logger.debug "Managing peers for torrent #{QuartzTorrent.bytesToHex(torrentData.infoHash)} on peer change event"
+        @logger.debug "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Managing peers on peer change event"
   
         # Non-recurring and immediate timer
         torrentData.managePeersTimer =
@@ -1355,7 +1355,7 @@ module QuartzTorrent
       if metadataSize
         # This peer knows the size of the metadata. If we haven't created our MetainfoPieceState yet, create it now.
         if ! torrentData.metainfoPieceState
-          @logger.info "Extended Handshake: Learned that metadata size is #{metadataSize}. Creating MetainfoPieceState"
+          @logger.info "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Extended Handshake: Learned that metadata size is #{metadataSize}. Creating MetainfoPieceState"
           torrentData.metainfoPieceState = MetainfoPieceState.new(@baseDirectory, torrentData.infoHash, metadataSize)
         end
       end
@@ -1370,10 +1370,10 @@ module QuartzTorrent
       end
 
       if msg.msgType == :request
-        @logger.debug "Got extended metainfo request for piece #{msg.piece}"
+        @logger.debug "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Got extended metainfo request for piece #{msg.piece}"
         # Build a response for this piece.
         if torrentData.metainfoPieceState.pieceCompleted? msg.piece
-          @logger.debug "Requesting extended metainfo piece #{msg.piece} from metainfoPieceState."
+          @logger.debug "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Requesting extended metainfo piece #{msg.piece} from metainfoPieceState."
           id = torrentData.metainfoPieceState.readPiece msg.piece
           torrentData.pieceManagerMetainfoRequestMetadata[id] = 
             PieceManagerRequestMetadata.new(:read, ReadRequestMetadata.new(peer,msg))
@@ -1382,19 +1382,19 @@ module QuartzTorrent
           reject.msgType = :reject
           reject.piece = msg.piece
           withPeersIo(peer, "sending extended metainfo reject message") do |io|
-            @logger.debug "Sending metainfo reject to #{peer}: piece #{msg.piece}"
+            @logger.debug "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Sending metainfo reject to #{peer}: piece #{msg.piece}"
             sendMessageToPeer reject, io, peer
           end
         end
       elsif msg.msgType == :piece
-        @logger.debug "Got extended metainfo piece response for piece #{msg.piece} with data length #{msg.data.length}"
+        @logger.debug "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Got extended metainfo piece response for piece #{msg.piece} with data length #{msg.data.length}"
         if ! torrentData.metainfoPieceState.pieceCompleted? msg.piece
           id = torrentData.metainfoPieceState.savePiece msg.piece, msg.data
           torrentData.pieceManagerMetainfoRequestMetadata[id] = 
             PieceManagerRequestMetadata.new(:write, msg)
         end
       elsif msg.msgType == :reject
-        @logger.debug "Got extended metainfo reject response for piece #{msg.piece}"
+        @logger.debug "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Got extended metainfo reject response for piece #{msg.piece}"
         # Mark this peer as bad.
         torrentData.metainfoPieceState.markPeerBad peer
         torrentData.metainfoPieceState.setPieceRequested(msg.piece, false)
@@ -1425,7 +1425,7 @@ module QuartzTorrent
     end
 
     def sendHaves(torrentData, pieceIndex)
-      @logger.debug "Sending Have messages to all connected peers for piece #{pieceIndex}"
+      @logger.debug "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Sending Have messages to all connected peers for piece #{pieceIndex}"
       torrentData.peers.all.each do |peer|
         next if peer.state != :established || peer.isUs
         withPeersIo(peer, "when sending Have message") do |io|
@@ -1451,7 +1451,7 @@ module QuartzTorrent
             msg = Uninterested.new
             sendMessageToPeer msg, io, peer
             peer.amInterested = false
-            @logger.debug "Sending Uninterested message to peer #{peer}"
+            @logger.debug "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Sending Uninterested message to peer #{peer}"
           end
         end
       end
@@ -1465,7 +1465,7 @@ module QuartzTorrent
       begin
         peer.peerMsgSerializer.serializeTo(msg, io)
       rescue
-        @logger.warn "Sending message to peer #{peer} failed: #{$!.message}"
+        @logger.warn "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Sending message to peer #{peer} failed: #{$!.message}"
       end
     end
 
@@ -1505,7 +1505,7 @@ module QuartzTorrent
         next if p.id && p.id == trackerclient.peerId
             
         if ! torrentData.peers.findByAddr(p.ip, p.port)
-          @logger.debug "Adding tracker peer #{p} to peers list"
+          @logger.debug "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Adding tracker peer #{p} to peers list"
           break if ! addProc.call(p)
         end
       end
@@ -1518,13 +1518,13 @@ module QuartzTorrent
         @logger.warn "Asked to remove a non-existent torrent #{QuartzTorrent.bytesToHex(infoHash)}"
         return
       end
-      @logger.info "Removing torrent #{QuartzTorrent.bytesToHex(infoHash)} and #{deleteFiles ? "will" : "wont"} delete downloaded files."
+      @logger.info "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Removing torrent.  #{deleteFiles ? "Will" : "Wont"} delete downloaded files."
 
-      @logger.info "Removing torrent: no torrentData.metainfoRequestTimer" if ! torrentData.metainfoRequestTimer
-      @logger.info "Removing torrent: no torrentData.managePeersTimer" if ! torrentData.managePeersTimer 
-      @logger.info "Removing torrent: no torrentData.checkMetadataPieceManagerTimer" if ! torrentData.checkMetadataPieceManagerTimer 
-      @logger.info "Removing torrent: no torrentData.checkPieceManagerTimer" if ! torrentData.checkPieceManagerTimer 
-      @logger.info "Removing torrent: no torrentData.requestBlocksTimer" if ! torrentData.requestBlocksTimer 
+      @logger.info "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Removing torrent: no torrentData.metainfoRequestTimer" if ! torrentData.metainfoRequestTimer
+      @logger.info "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Removing torrent: no torrentData.managePeersTimer" if ! torrentData.managePeersTimer 
+      @logger.info "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Removing torrent: no torrentData.checkMetadataPieceManagerTimer" if ! torrentData.checkMetadataPieceManagerTimer 
+      @logger.info "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Removing torrent: no torrentData.checkPieceManagerTimer" if ! torrentData.checkPieceManagerTimer 
+      @logger.info "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Removing torrent: no torrentData.requestBlocksTimer" if ! torrentData.requestBlocksTimer 
 
 
       # Stop all timers
@@ -1560,7 +1560,7 @@ module QuartzTorrent
       begin
         torrentData.metainfoPieceState.remove if torrentData.metainfoPieceState
       rescue
-        @logger.warn "Deleting metainfo file for torrent #{QuartzTorrent.bytesToHex(infoHash)} failed: #{$!}"  
+        @logger.warn "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Deleting metainfo file for torrent #{QuartzTorrent.bytesToHex(infoHash)} failed: #{$!}"  
       end
 
       if deleteFiles
@@ -1569,12 +1569,12 @@ module QuartzTorrent
             path = @baseDirectory + File::SEPARATOR + torrentData.info.name
             if File.exists? path
               FileUtils.rm_r path
-              @logger.info "Deleted #{path}"
+              @logger.info "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Deleted #{path}"
             else
-              @logger.warn "Deleting '#{path}' for torrent #{QuartzTorrent.bytesToHex(infoHash)} failed: #{$!}"  
+              @logger.warn "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: Deleting '#{path}' for torrent #{QuartzTorrent.bytesToHex(infoHash)} failed: #{$!}"  
             end
           rescue
-            @logger.warn "When removing torrent #{QuartzTorrent.bytesToHex(infoHash)} deleting '#{path}' failed because it doesn't exist"  
+            @logger.warn "#{QuartzTorrent.bytesToHex(torrentData.infoHash)}: When removing torrent, deleting '#{path}' failed because it doesn't exist"  
           end
         end
       end
