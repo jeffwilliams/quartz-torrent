@@ -13,14 +13,10 @@ class Semaphore
     c = nil
     @mutex.synchronize do
       @count -= 1
-      c = @count
-    end
-
-    if c < 0
-      @mutex.synchronize do
+      if @count < 0
         @sleeping.push Thread.current
+        @mutex.sleep
       end
-      Thread.stop
     end
   end
 
@@ -30,13 +26,10 @@ class Semaphore
     @mutex.synchronize do
       c = @count
       @count += 1
-    end
-    if c < 0 
-      t = nil
-      @mutex.synchronize do
+      if c < 0 
         t = @sleeping.shift
+        t.wakeup if t
       end
-      t.wakeup if t
     end
   end
 end
