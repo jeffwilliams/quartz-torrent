@@ -33,6 +33,29 @@ class TestSemaphore < MiniTest::Unit::TestCase
     assert_equal 4, count
   end
 
+  def testWaitWithTimeout
+    sem = Semaphore.new
+
+    # Test if we are not signalled
+    rc = sem.wait(1)
+    assert_equal 0, sem.count
+    assert_equal false, rc
+    
+  
+    # Test if we _are_ signalled before wait completes
+    waitFinished = false
+    rc = nil
+    t1 = Thread.new do
+      rc = sem.wait(10)
+      waitFinished = true
+    end
+    sem.signal
+    
+    sleep 0.1 while ! waitFinished
+    assert_equal 0, sem.count
+    assert_equal true, rc
+  end
+
 end
 
 

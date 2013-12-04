@@ -387,9 +387,13 @@ module QuartzTorrent
       result = {}
       return result if stopped?
       semaphore = Semaphore.new
-      @reactor.scheduleTimer(0, [:get_torrent_data, result, semaphore, infoHash], false, true)
-      semaphore.wait
-      result
+      timer = @reactor.scheduleTimer(0, [:get_torrent_data, result, semaphore, infoHash], false, true)
+      if semaphore.wait(3)
+        result
+      else
+        @logger.warn "getDelegateTorrentData: Waiting on semaphore timed out"
+        throw "Waiting on semaphore for timer #{timer.object_id} timed out"
+      end
     end
 
     # Update the data stored in a TorrentDataDelegate to the latest information.

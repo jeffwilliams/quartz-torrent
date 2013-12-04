@@ -1,8 +1,8 @@
 require 'socket'
-require 'pqueue'
 require 'fiber'
 require 'thread'
 require 'quartz_torrent/ratelimit'
+require 'quartz_torrent/timermanager'
 include Socket::Constants
 
 module QuartzTorrent
@@ -365,84 +365,6 @@ module QuartzTorrent
     end
   end
 
-  # Class used to manage timers.
-  class TimerManager
-    class TimerInfo
-      def initialize(duration, recurring, metainfo)
-        @duration = duration
-        @recurring = recurring
-        @metainfo = metainfo
-        @cancelled = false
-        refresh
-      end
-      attr_accessor :recurring
-      attr_accessor :duration
-      attr_accessor :expiry
-      attr_accessor :metainfo
-      # Since pqueue doesn't allow removal of anything but the head
-      # we flag deleted items so they are deleted when they are pulled
-      attr_accessor :cancelled
-
-      def secondsUntilExpiry
-        @expiry - Time.new
-      end
-
-      def refresh
-        @expiry = Time.new + @duration
-      end
-    end
-
-    def initialize(logger = nil)
-      @queue = PQueue.new { |a,b| b.expiry <=> a.expiry }
-      @mutex = Mutex.new
-      @logger = logger
-    end
-
-    # Add a timer. Parameter 'duration' specifies the timer duration in seconds,
-    # 'metainfo' is caller information passed to the handler when the timer expires,
-    # 'recurring' should be true if the timer will repeat, or false if it will only
-    # expire once, and 'immed' when true specifies that the timer should expire immediately 
-    # (and again each duration if recurring) while false specifies that the timer will only
-    # expire the first time after it's duration elapses.
-    def add(duration, metainfo = nil, recurring = true, immed = false)
-      raise "TimerManager.add: Timer duration may not be nil" if duration.nil?
-      info = TimerInfo.new(duration, recurring, metainfo)
-      info.expiry = Time.new if immed
-      @mutex.synchronize{ @queue.push info }
-      info
-    end
-  
-    # Cancel a timer.
-    def cancel(timerInfo)
-      timerInfo.cancelled = true
-    end
-
-    # Return the next timer event from the queue, but don't remove it from the queue.
-    def peek
-      clearCancelled
-      @queue.top
-    end
-
-    # Remove the next timer event from the queue and return it as a TimerHandler::TimerInfo object.
-    def next
-      clearCancelled
-      result = nil
-      @mutex.synchronize{ result = @queue.pop }
-      if result && result.recurring
-        result.refresh
-        @mutex.synchronize{ @queue.push result }
-      end
-      result
-    end
-
-    private 
-    
-    def clearCancelled
-      while @queue.top && @queue.top.cancelled
-        info = @queue.pop 
-      end
-    end
-  end
 
   # This class implements the Reactor pattern. The Reactor listens for activity on IO objects and calls methods on 
   # an associated Handler object when activity is detected. Callers can use listen, connect or open to register IO
@@ -772,9 +694,9 @@ module QuartzTorrent
       selectTimeout = nil
       timer = nil
       while true && ! @stopped
-        timer = @timerManager.peek
+        secondsUntilExpiry = nil
+        timer = @timerManager.next{ |s| secondsUntilExpiry = s }
         break if ! timer
-        secondsUntilExpiry = timer.secondsUntilExpiry
         if secondsUntilExpiry > 0
           selectTimeout = secondsUntilExpiry
           break
@@ -843,7 +765,6 @@ module QuartzTorrent
         @logger.error "Exception in timer event handler: #{$!}" if @logger
         @logger.error $!.backtrace.join "\n" if @logger
       end
-      @timerManager.next   
     end
 
     def disposeIo(io)

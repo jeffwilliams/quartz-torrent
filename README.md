@@ -100,11 +100,12 @@ And a specific test case in a test using:
 
 To-Do
 -----
-  - Start a peerclient with the full torrent. Connect with another peerclient and start downloading, then pause.
+  - Bug: Start a peerclient with the full torrent. Connect with another peerclient and start downloading, then pause.
     Finally unpause. The "server" peerclient will refuse the connections to re-establish because it believes the
     peer is already connected.
   - Implement an alert system. This would allow users to detect situations like tracker connection failures, etc.
   - Improve CPU usage. 
+  - If a tracker URL fails, try the next if another is available
   - Refactor Metadata.Info into it's own independent class.
   - Improve Documentation
   - Implement uTP
