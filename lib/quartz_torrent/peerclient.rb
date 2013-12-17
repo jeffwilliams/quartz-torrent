@@ -14,6 +14,7 @@ require "quartz_torrent/metainfopiecestate.rb"
 require "quartz_torrent/extension.rb"
 require "quartz_torrent/magnet.rb"
 require "quartz_torrent/torrentqueue.rb"
+require "quartz_torrent/alarm.rb"
 
 
 module QuartzTorrent
@@ -60,6 +61,7 @@ module QuartzTorrent
       @uploadDuration = nil
       @downloadCompletedTime = nil
       @isEndgame = false
+      @alarms = Alarms.new
     end
     # The torrents Metainfo.Info struct. This is nil if the torrent has no metadata and we need to download it
     # (i.e. a magnet link)
@@ -118,7 +120,8 @@ module QuartzTorrent
     attr_accessor :uploadDuration
     # Time at which we completely downloaded all bytes of the torrent.
     attr_accessor :downloadCompletedTime
-
+    # Alarms object for this torrent
+    attr_reader :alarms
   end
 
   # Data about torrents for use by the end user. 
@@ -173,6 +176,8 @@ module QuartzTorrent
     attr_accessor :bytesDownloadedDataOnly
     attr_accessor :bytesUploaded
     attr_accessor :bytesDownloaded
+    # Array of currently raised alarms
+    attr_accessor :alarms
   
     # Update the data in this TorrentDataDelegate from the torrentData
     # object that it was created from. TODO: What if that torrentData is now gone?
@@ -235,6 +240,7 @@ module QuartzTorrent
       @uploadRateLimit = torrentData.upRateLimit.unitsPerSecond if torrentData.upRateLimit
       @ratio = torrentData.ratio
       @uploadDuration = torrentData.uploadDuration
+      @alarms = torrentData.alarms.all
     end
 
     def buildPeersList(torrentData)
@@ -279,6 +285,7 @@ module QuartzTorrent
     def addTrackerClient(infoHash, info, trackerclient)
       raise "There is already a tracker registered for torrent #{QuartzTorrent.bytesToHex(infoHash)}" if @torrentData.has_key? infoHash
       torrentData = TorrentData.new(infoHash, info, trackerclient)
+      trackerclient.alarms = torrentData.alarms
       @torrentData[infoHash] = torrentData
       torrentData.info = info
       torrentData.state = :initializing

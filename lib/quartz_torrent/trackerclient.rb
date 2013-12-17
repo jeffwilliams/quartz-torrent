@@ -128,6 +128,7 @@ module QuartzTorrent
       @infoHash = infoHash
       @peersChangedListeners = []
       @dynamicRequestParamsBuilder = Proc.new{ TrackerDynamicRequestParams.new(dataLength) }
+      @alarms = nil
     end
     
     attr_reader :peerId
@@ -135,6 +136,10 @@ module QuartzTorrent
     # This should be set to a Proc that when called will return a TrackerDynamicRequestParams object
     # with up-to-date information.
     attr_accessor :dynamicRequestParamsBuilder
+
+    # This member can be set to an Alarms object. If it is, this tracker will raise alarms
+    # when it doesn't get a response, and clear them when it does.
+    attr_accessor :alarms
 
     # Return true if this TrackerClient is started, false otherwise.
     def started?
@@ -207,12 +212,20 @@ module QuartzTorrent
               addError $!
               @logger.debug "Request failed due to exception: #{$!}"
               @logger.debug $!.backtrace.join("\n")
+
+              @alarms.raise Alarm.new(:tracker, "Request failed: #{$!}") if @alarms
             end
 
             if response && response.successful?
+              @alarms.clear :tracker if @alarms
               # Replace the list of peers
               peersHash = {}
               @logger.info "Response contained #{response.peers.length} peers"
+
+              if response.peers.length == 0
+                @alarms.raise Alarm.new(:tracker, "Response from tracker contained no peers") if @alarms
+              end
+
               response.peers.each do |p|
                 peersHash[p] = 1
               end
@@ -225,6 +238,7 @@ module QuartzTorrent
             else
               @logger.debug "Response was unsuccessful from tracker"
               addError response.error if response
+              @alarms.raise Alarm.new(:tracker, "Unsuccessful response from tracker: #{response.error}") if @alarms && response
             end
 
             # If we have no interval from the tracker yet, and the last request didn't error out leaving us with no peers,
