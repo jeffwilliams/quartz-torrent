@@ -644,7 +644,7 @@ class Settings
     @uploadLimit = nil
     @downloadLimit = nil
     @uploadRatio = nil
-    @logfile = "/tmp/download_torrent_curses.log"
+    @logfile = "/tmp/download_torrent_curses.pid#{Process.pid}_.log"
     @maxIncomplete = 5
     @maxActive = 10
   end
