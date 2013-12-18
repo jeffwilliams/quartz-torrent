@@ -384,6 +384,36 @@ module QuartzTorrent
       torrentData.uploadDuration = seconds
     end
 
+    # Adjust the bytesUploaded property of the specified torrent by the passed amount.
+    # Adjustment should be an integer. It is added to the current bytesUploaded amount.
+    def adjustBytesUploaded(infoHash, adjustment)
+      torrentData = @torrentData[infoHash]
+      if ! torrentData
+        @logger.warn "Asked to adjust uploaded bytes for a non-existent torrent #{QuartzTorrent.bytesToHex(infoHash)}"
+        return
+      end
+      
+      runInReactorThread do
+        torrentData.bytesUploaded += adjustment
+        torrentData.bytesUploadedDataOnly += adjustment
+      end
+    end
+
+    # Adjust the bytesDownloaded property of the specified torrent by the passed amount.
+    # Adjustment should be an integer. It is added to the current bytesDownloaded amount.
+    def adjustBytesDownloaded(infoHash, adjustment)
+      torrentData = @torrentData[infoHash]
+      if ! torrentData
+        @logger.warn "Asked to adjust uploaded bytes for a non-existent torrent #{QuartzTorrent.bytesToHex(infoHash)}"
+        return
+      end
+      
+      runInReactorThread do
+        torrentData.bytesDownloaded += adjustment
+        torrentData.bytesDownloadedDataOnly += adjustment
+      end
+    end
+
     # Get a hash of new TorrentDataDelegate objects keyed by torrent infohash.
     # This method is meant to be called from a different thread than the one
     # the reactor is running in. This method is not immediate but blocks until the
@@ -673,6 +703,8 @@ module QuartzTorrent
         requestMetadataPieces(metadata[1])
       elsif metadata.is_a?(Array) && metadata[0] == :check_metadata_piece_manager
         checkMetadataPieceManagerResults(metadata[1])
+      elsif metadata.is_a?(Array) && metadata[0] == :runproc
+        metadata[1].call
       else
         @logger.info "Unknown timer #{metadata} expired."
       end
@@ -1010,7 +1042,7 @@ module QuartzTorrent
         @logger.error "Check metadata piece manager results: data for torrent #{QuartzTorrent.bytesToHex(infoHash)} not found."
         return
       end
- 
+
       # We may not have completed the extended handshake with the peer which specifies the torrent size.
       # In this case torrentData.metainfoPieceState is not yet set.
       return if ! torrentData.metainfoPieceState
@@ -1673,9 +1705,15 @@ module QuartzTorrent
         torrentData.managePeersTimer =
           @reactor.scheduleTimer(@managePeersPeriod, [:manage_peers, torrentData.infoHash], false, true)
       end
-
     end
     
+    # Run the passed block in the Reactor's thread. This allows manipulation of torrent data without race
+    # conditions. This method works by scheduling a non-recurring, immediate timer in the reactor that
+    # on expiry runs the passed block.
+    def runInReactorThread(&block)
+      @reactor.scheduleTimer(0, [:runproc, block], false, true)
+    end
+
   end
 
   # Represents a client that talks to bittorrent peers. This is the main class used to download and upload
@@ -1800,6 +1838,22 @@ module QuartzTorrent
     def setUploadDuration(infoHash, seconds)
       raise "upload ratio must be Numeric, not a #{seconds.class}" if seconds && ! seconds.is_a?(Numeric)
       @handler.setUploadDuration(infoHash, seconds)
+    end
+
+    # Adjust the bytesUploaded property of the specified torrent by the passed amount.
+    # Adjustment should be an integer. It is added to the current bytesUploaded amount.
+    def adjustBytesUploaded(infoHash, adjustment)
+      return if ! adjustment
+      raise "Bytes uploaded adjustment must be an Integer, not a #{adjustment.class}" if !adjustment.is_a?(Integer)
+      @handler.adjustBytesUploaded(infoHash, adjustment)
+    end
+
+    # Adjust the bytesDownloaded property of the specified torrent by the passed amount.
+    # Adjustment should be an integer. It is added to the current bytesUploaded amount.
+    def adjustBytesDownloaded(infoHash, adjustment)
+      return if ! adjustment
+      raise "Bytes downloaded adjustment must be an Integer, not a #{adjustment.class}" if !adjustment.is_a?(Integer)
+      @handler.adjustBytesDownloaded(infoHash, adjustment)
     end
 
     # Remove a currently running torrent
