@@ -625,14 +625,16 @@ module QuartzTorrent
         end
       end
 
-      if selectResult.nil?
-        # Process timer
-        @logger.debug "eventloop: processing timer" if @logger
+      if timer
         # Calling processTimer in withReadFiber here is not correct. What if at this point the fiber was already paused in a read, and we
         # want to process a timer? In that case we will resume the read and it will possibly finish, but we'll never 
         # call the timer handler. For this reason we must prevent read calls in timerHandlers.
-        processTimer(timer) if timer
-      else
+        # Process timer
+        @logger.debug "eventloop: processing timer" if @logger
+        processTimer(timer)
+      end
+
+      if ! selectResult.nil?
         readable, writeable = selectResult
   
         # If we are stopped, then ignore reads; we only care about completing our writes that were pending when we were stopped.
