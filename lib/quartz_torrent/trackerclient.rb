@@ -213,7 +213,7 @@ module QuartzTorrent
               @logger.debug "Request failed due to exception: #{$!}"
               @logger.debug $!.backtrace.join("\n")
 
-              @alarms.raise Alarm.new(:tracker, "Request failed: #{$!}") if @alarms
+              @alarms.raise Alarm.new(:tracker, "Tracker request failed: #{$!}") if @alarms
             end
 
             if response && response.successful?
