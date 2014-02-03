@@ -29,7 +29,7 @@ end
 info = nil
 begin
   metainfo = Metainfo.createFromFile(torrent)
-  puts "Info Hash: #{bytesToHex(metainfo.infoHash)}"
+  puts "Info Hash: #{QuartzTorrent.bytesToHex(metainfo.infoHash)}"
   puts "Announce: #{metainfo.announce}" if metainfo.announce
   if metainfo.announceList
     puts "Announce list: "
