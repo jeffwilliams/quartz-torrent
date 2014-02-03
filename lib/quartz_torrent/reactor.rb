@@ -345,6 +345,7 @@ module QuartzTorrent
       @useErrorhandler = true
       @readRateLimit = nil
       @writeRateLimit = nil
+      raise "IO passed to IOInfo initialize may not be nil" if io.nil?
     end
     attr_accessor :io
     attr_accessor :metainfo
@@ -415,7 +416,9 @@ module QuartzTorrent
       @stopped
     end
 
-    # Create a TCP connection to the specified host
+    # Create a TCP connection to the specified host.
+    # Note that this method may raise exceptions. For example 'Too many open files' might be raised if 
+    # the process is using too many file descriptors
     def connect(addr, port, metainfo, timeout = nil)
       ioInfo = startConnection(port, addr, metainfo)
       @ioInfo[ioInfo.io] = ioInfo
@@ -650,6 +653,10 @@ module QuartzTorrent
           end
 
           @currentIoInfo = @ioInfo[io]
+ 
+          # The IOInfo associated with this io could have been closed by the timer handler processed above.         
+          next if @currentIoInfo.nil?
+
           if @currentIoInfo.state == :listening
             @logger.debug "eventloop: calling handleAccept for IO metainfo=#{@currentIoInfo.metainfo}" if @logger
             # Replace the currentIoInfo with the accepted socket
