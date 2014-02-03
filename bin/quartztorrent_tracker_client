@@ -1,0 +1,44 @@
+#!/usr/bin/env ruby
+require 'quartz_torrent'
+
+include QuartzTorrent
+
+def help
+  puts "Usage: #{$0} <torrentfile>"
+  puts "Output the result of a tracker request from the specified .torrent announce"
+  puts 
+end
+
+torrent = ARGV[0]
+if ! torrent
+  help
+  exit 1
+end   
+
+metainfo = Metainfo.createFromFile(torrent)
+puts "Info Hash: #{QuartzTorrent.bytesToHex(metainfo.infoHash)}"
+puts "Announce: #{metainfo.announce}" if metainfo.announce
+if metainfo.announceList
+  puts "Announce list: "
+  metainfo.announceList.each { |e| puts "  #{e}" }
+end
+
+trackers = []
+trackers.push metainfo.announce if metainfo.announce
+if metainfo.announceList
+  metainfo.announceList.each do |list|
+    trackers.concat list if list
+  end
+end
+
+trackers.each do |tracker|
+  puts "\nSending tracker request to #{tracker}:"
+
+  trackerClient = TrackerClient.create(tracker, metainfo.infoHash, 0, false)
+  begin
+    resp = trackerClient.request
+  rescue
+    puts "Exception: #{$!}"
+  end
+  puts resp.inspect
+end
