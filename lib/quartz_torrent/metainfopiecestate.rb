@@ -92,7 +92,7 @@ module QuartzTorrent
           # Sanity check
           testInfoHash = Digest::SHA1.digest( bencoded )
           if testInfoHash == infoHash
-            result = Metainfo::Info.createFromBdecode(bencoded.bdecode) 
+            result = Metainfo::Info.createFromBdecode(BEncode.load(bencoded, {:ignore_trailing_junk => 1})) 
           else
             logger.info "the computed SHA1 hash doesn't match the specified infoHash in #{path}"
           end

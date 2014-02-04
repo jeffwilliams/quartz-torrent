@@ -177,7 +177,7 @@ module QuartzTorrent
     def self.createFromString(data)
       logger = LogManager.getLogger("metainfo")
 
-      decoded = data.bdecode
+      decoded = BEncode.load(data, {:ignore_trailing_junk => 1})
       logger.debug "Decoded torrent metainfo: #{decoded.inspect}"
       result = Metainfo.new
       result.createdBy = decoded['created by']

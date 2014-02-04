@@ -43,10 +43,7 @@ begin
   info = metainfo.info
 rescue
   # Doesn't seem to be a complete .torrent file. Maybe it is just the info part.
-  File.open(torrent, "r") do |file|
-    bencoded = file.read
-    info = Metainfo::Info.createFromBdecode(bencoded.bdecode)
-  end
+  info = info = Metainfo::Info.createFromBdecode(BEncode.load_file(torrent, {:ignore_trailing_junk => 1} ))
 end
 
 if info
