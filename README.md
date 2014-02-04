@@ -103,7 +103,6 @@ To-Do
   - Bug: Start a peerclient with the full torrent. Connect with another peerclient and start downloading, then pause.
     Finally unpause. The "server" peerclient will refuse the connections to re-establish because it believes the
     peer is already connected.
-  - If a tracker URL fails, try the next if another is available
   - Improve Documentation
   - Implement uTP
     - <http://www.bittorrent.org/beps/bep_0029.html#packet-sizes>
