@@ -54,7 +54,11 @@ module QuartzTorrent
       end
       uri.query = query
   
-      res = Net::HTTP.get_response(uri)
+      begin
+        res = Net::HTTP.get_response(uri)
+      rescue Timeout::Error
+        return TrackerResponse.new(false, "Tracker request timed out", []) 
+      end
       @logger.debug "Tracker response code: #{res.code}"
       @logger.debug "Tracker response body: #{res.body}"
       result = buildTrackerResponse(res)

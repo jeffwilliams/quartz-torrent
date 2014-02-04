@@ -6,9 +6,9 @@ require 'quartz_torrent/trackerclient'
 
 TestDataDir = "tests/data"
 
-class TestHttpTrackerClient < QuartzTorrent::HttpTrackerClient
+class TestHttpTrackerDriver < QuartzTorrent::HttpTrackerDriver
   def initialize
-    super(nil, nil, 0)
+    super(nil, nil)
   end
 
   def testDecodePeers(p)
@@ -16,18 +16,28 @@ class TestHttpTrackerClient < QuartzTorrent::HttpTrackerClient
   end
 end
 
-class TrackerTestClient < QuartzTorrent::TrackerClient
+class SimpleTestTrackerDriver < QuartzTorrent::TrackerDriver
   def initialize(requestCallback)
-    super(nil, nil)
     @requestCallback = requestCallback
   end
 
-  def request(event)
+  def request(event = nil)
     @requestCallback.call event
     peer = QuartzTorrent::TrackerPeer.new("127.0.0.1",6556)
     resp = QuartzTorrent::TrackerResponse.new(true, nil, [peer])
     resp.interval = 1
     resp
+  end
+end
+
+class TrackerTestClient < QuartzTorrent::TrackerClient
+  def initialize(requestCallback)
+    super("http://localhost:9999/announce", nil)
+    @driver = SimpleTestTrackerDriver.new(requestCallback)
+  end
+
+  def currentDriver
+    @driver
   end
 end
 
@@ -38,7 +48,7 @@ class TestTrackerClient < MiniTest::Unit::TestCase
   def testTrackerResponsePeerParsing
     compactPeers = [127,0,0,1,1000, 127,0,0,2,2002].pack("CCCCnCCCCn")
 
-    testTracker = TestHttpTrackerClient.new
+    testTracker = TestHttpTrackerDriver.new
     peers = testTracker.testDecodePeers(compactPeers)
  
     assert_equal 2, peers.length

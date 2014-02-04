@@ -1,8 +1,8 @@
 require "quartz_torrent/log"
 require "quartz_torrent/metainfo"
 require "quartz_torrent/udptrackermsg"
-require "quartz_torrent/httptrackerclient"
-require "quartz_torrent/udptrackerclient"
+require "quartz_torrent/httptrackerdriver"
+require "quartz_torrent/udptrackerdriver"
 require "quartz_torrent/interruptiblesleep"
 require "quartz_torrent/util"
 require "net/http"
@@ -106,7 +106,8 @@ module QuartzTorrent
     end
   end
 
-  # Low-level interface to trackers
+  # Low-level interface to trackers. TrackerClient uses an instance of a subclass of this to talk to 
+  # trackers using different protocols.
   class TrackerDriver
     def initialize(dataLength = 0)
       @dynamicRequestParamsBuilder = Proc.new{ TrackerDynamicRequestParams.new(dataLength) }
@@ -159,7 +160,9 @@ module QuartzTorrent
       @alarms = nil
 
       # Convert announceUrl to an array
-      if @announceUrlList.is_a? String
+      if @announceUrlList.nil?
+        @announceUrlList = []
+      elsif @announceUrlList.is_a? String
         @announceUrlList = [@announceUrlList]
         @announceUrlList.compact!
       else
@@ -260,7 +263,7 @@ module QuartzTorrent
 
             if driver
               begin 
-                @logger.debug "Sending request"
+                @logger.debug "Sending request to tracker #{currentAnnounceUrl}"
                 response = driver.request(@event)
                 @event = nil
                 trackerInterval = response.interval
@@ -268,8 +271,8 @@ module QuartzTorrent
                 addError $!
                 @logger.debug "Request failed due to exception: #{$!}"
                 @logger.debug $!.backtrace.join("\n")
-                @logger.debug "Changing to different tracker"
                 @announceUrlIndex += 1
+                @logger.debug "Changing to different tracker"
                 next
 
                 @alarms.raise Alarm.new(:tracker, "Tracker request failed: #{$!}") if @alarms
@@ -299,8 +302,8 @@ module QuartzTorrent
               @logger.debug "Response was unsuccessful from tracker"
               addError response.error if response
               @alarms.raise Alarm.new(:tracker, "Unsuccessful response from tracker: #{response.error}") if @alarms && response
-              @logger.debug "Changing to different tracker"
               @announceUrlIndex += 1
+              @logger.debug "Changed to next tracker #{currentAnnounceUrl}"
               next
             end
 
@@ -321,7 +324,8 @@ module QuartzTorrent
         @logger.info "Worker thread shutting down"
         @logger.info "Sending final update to tracker"
         begin
-          request(:stopped)
+          driver = currentDriver
+          driver.request(:stopped) if driver
         rescue
           addError $!
           @logger.debug "Request failed due to exception: #{$!}"
@@ -359,13 +363,21 @@ module QuartzTorrent
     end
 
     def currentDriver
-      return nil if @announceUrlList.size == 0
-      @announceUrlIndex = 0 if @announceUrlIndex > @announceUrlList.size-1
+      announceUrl = currentAnnounceUrl
+      return nil if ! announceUrl
            
-      driver = TrackerClient.createDriver @announceUrlList[@announceUrlIndex], @infoHash
+      driver = TrackerClient.createDriver announceUrl, @infoHash
       driver.dynamicRequestParamsBuilder = @dynamicRequestParamsBuilder if driver
       driver.port = @port
       driver.peerId = @peerId
+      driver
+    end
+
+    def currentAnnounceUrl
+      return nil if @announceUrlList.size == 0
+      @announceUrlIndex = 0 if @announceUrlIndex > @announceUrlList.size-1
+
+      @announceUrlList[@announceUrlIndex]
     end
 
   end
