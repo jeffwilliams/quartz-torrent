@@ -1,13 +1,17 @@
 module QuartzTorrent
   class TrackerClient
   end
+  class TrackerDriver
+  end
 
-  # A tracker client that uses the HTTP protocol. This is the classic BitTorrent tracker protocol.
-  class HttpTrackerClient < TrackerClient
-    def initialize(announceUrl, infoHash, dataLength)
-      super(announceUrl, infoHash, dataLength)
+  # A tracker driver that uses the HTTP protocol. This is the classic BitTorrent tracker protocol.
+  class HttpTrackerDriver < TrackerDriver
+    def initialize(announceUrl, infoHash)
+      super()
       @startSent = false
       @logger = LogManager.getLogger("http_tracker_client")
+      @announceUrl = announceUrl
+      @infoHash = infoHash
     end
  
     # Request a list of peers from the tracker and return it as a TrackerResponse.   
@@ -24,8 +28,8 @@ module QuartzTorrent
 
       params = {}
       params['info_hash'] = CGI.escape(@infoHash)
-      params['peer_id'] = @peerId
-      params['port'] = @port
+      params['peer_id'] = dynamicParams.peerId
+      params['port'] = dynamicParams.port
       params['uploaded'] = dynamicParams.uploaded.to_s
       params['downloaded'] = dynamicParams.downloaded.to_s
       params['left'] = dynamicParams.left.to_s

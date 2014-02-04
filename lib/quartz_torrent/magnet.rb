@@ -60,6 +60,16 @@ module QuartzTorrent
       end
     end
 
+    # Return an array of all tracker URLS in the magnet link. 
+    def trackers
+      tr = @params['tr']
+      if tr
+        tr
+      else
+        []
+      end
+    end
+
     # Return the first display name found in the magnet link. Returns nil if the magnet has no display name.
     def displayName
       dn = @params['dn']

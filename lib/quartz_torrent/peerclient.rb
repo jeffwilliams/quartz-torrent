@@ -1782,7 +1782,7 @@ module QuartzTorrent
       addTorrent(trackerclient, metainfo.infoHash, metainfo.info)
     end
 
-    # Add a new torrent to manage given an announceUrl and an infoHash. 
+    # Add a new torrent to manage given an announceUrl and an infoHash. The announceUrl may be a list. 
     # Returns the infoHash of the newly added torrent.
     def addTorrentWithoutMetainfo(announceUrl, infoHash, magnet = nil)
       raise "addTorrentWithoutMetainfo should be called with a Magnet object, not a #{magnet.class}" if magnet && ! magnet.is_a?(MagnetURI)
@@ -1796,7 +1796,7 @@ module QuartzTorrent
     def addTorrentByMagnetURI(magnet)
       raise "addTorrentByMagnetURI should be called with a MagnetURI object, not a #{magnet.class}" if ! magnet.is_a?(MagnetURI)
 
-      trackerUrl = magnet.tracker
+      trackerUrl = magnet.trackers
       raise "addTorrentByMagnetURI can't handle magnet links that don't have a tracker URL." if !trackerUrl
 
       addTorrentWithoutMetainfo(trackerUrl, magnet.btInfoHash, magnet)

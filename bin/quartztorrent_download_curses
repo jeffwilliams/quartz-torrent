@@ -346,7 +346,7 @@ class DebugScreen < Screen
     @profiler.trackClass QuartzTorrent::PieceManager::Result
     @profiler.trackClass QuartzTorrent::Formatter
     @profiler.trackClass QuartzTorrent::TrackerClient
-    @profiler.trackClass QuartzTorrent::HttpTrackerClient
+    @profiler.trackClass QuartzTorrent::HttpTrackerDriver
     @profiler.trackClass QuartzTorrent::InterruptibleSleep
     @profiler.trackClass QuartzTorrent::LogManager
     @profiler.trackClass QuartzTorrent::Metainfo
@@ -390,7 +390,7 @@ class DebugScreen < Screen
     @profiler.trackClass QuartzTorrent::TrackerDynamicRequestParams
     @profiler.trackClass QuartzTorrent::TrackerResponse
     @profiler.trackClass QuartzTorrent::TrackerClient
-    @profiler.trackClass QuartzTorrent::UdpTrackerClient
+    @profiler.trackClass QuartzTorrent::UdpTrackerDriver
     @profiler.trackClass QuartzTorrent::UdpTrackerMessage
     @profiler.trackClass QuartzTorrent::UdpTrackerRequest
     @profiler.trackClass QuartzTorrent::UdpTrackerResponse

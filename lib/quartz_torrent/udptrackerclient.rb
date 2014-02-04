@@ -1,10 +1,12 @@
 module QuartzTorrent
-  # A tracker client that uses the UDP protocol as defined by http://xbtt.sourceforge.net/udp_tracker_protocol.html
-  class UdpTrackerClient < TrackerClient
+  # A tracker driver that uses the UDP protocol as defined by http://xbtt.sourceforge.net/udp_tracker_protocol.html
+  class UdpTrackerDriver < TrackerDriver
     # Set UDP receive length to a value that allows up to 100 peers to be returned in an announce.
     ReceiveLength = 620 
-    def initialize(announceUrl, infoHash, dataLength, timeout = 2)
-      super(announceUrl, infoHash, dataLength)
+    def initialize(announceUrl, infoHash, timeout = 2)
+      super()
+      @announceUrl = announceUrl
+      @infoHash = infoHash
       @timeout = timeout
       @logger = LogManager.getLogger("udp_tracker_client")
       if @announceUrl =~ /udp:\/\/([^:]+):(\d+)/
@@ -43,14 +45,14 @@ module QuartzTorrent
 
         # Send announce request      
         req = UdpTrackerAnnounceRequest.new(connectionId)
-        req.peerId = @peerId
+        req.peerId = dynamicParams.peerId
         req.infoHash = @infoHash
         req.downloaded = dynamicParams.downloaded
         req.left = dynamicParams.left
         req.uploaded = dynamicParams.uploaded
         req.event = event
         #req.port = socket.addr[1]
-        req.port = @port
+        req.port = dynamicParams.port
         socket.send req.serialize, 0
         resp = UdpTrackerAnnounceResponse.unserialize(readWithTimeout(socket,ReceiveLength,@timeout))
         socket.close

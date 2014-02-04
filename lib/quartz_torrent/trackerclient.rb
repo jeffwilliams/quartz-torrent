@@ -67,6 +67,10 @@ module QuartzTorrent
       else
         @left = 0
       end
+      @port = 6881
+      @peerId = "-QR0001-" # Azureus style
+      @peerId << Process.pid.to_s
+      @peerId = @peerId + "x" * (20-@peerId.length)
     end
     # Number of bytes uploaded
     attr_accessor :uploaded
@@ -74,6 +78,8 @@ module QuartzTorrent
     attr_accessor :downloaded
     # Number of bytes left to download before torrent is completed
     attr_accessor :left
+    attr_accessor :port
+    attr_accessor :peerId
   end
 
   # Represents the response from a tracker request
@@ -97,6 +103,23 @@ module QuartzTorrent
     # Returns true if the Tracker response was a success
     def successful?
       @success
+    end
+  end
+
+  # Low-level interface to trackers
+  class TrackerDriver
+    def initialize(dataLength = 0)
+      @dynamicRequestParamsBuilder = Proc.new{ TrackerDynamicRequestParams.new(dataLength) }
+    end
+
+    # This should be set to a Proc that when called will return a TrackerDynamicRequestParams object
+    # with up-to-date information.
+    attr_accessor :dynamicRequestParamsBuilder
+    attr_accessor :port
+    attr_accessor :peerId
+
+    def request(event = nil)
+      raise "Implement me"
     end
   end
 
@@ -124,11 +147,28 @@ module QuartzTorrent
       @event = :started
       @worker = nil
       @logger = LogManager.getLogger("tracker_client")
-      @announceUrl = announceUrl
+      @announceUrlList = announceUrl
       @infoHash = infoHash
       @peersChangedListeners = []
-      @dynamicRequestParamsBuilder = Proc.new{ TrackerDynamicRequestParams.new(dataLength) }
+      @dynamicRequestParamsBuilder = Proc.new do 
+        result = TrackerDynamicRequestParams.new(dataLength) 
+        result.port = @port
+        result.peerId = @peerId
+        result
+      end
       @alarms = nil
+
+      # Convert announceUrl to an array
+      if @announceUrlList.is_a? String
+        @announceUrlList = [@announceUrlList]
+        @announceUrlList.compact!
+      else
+        @announceUrlList = @announceUrlList.flatten.sort.uniq
+      end
+
+      raise "AnnounceURL contained no valid trackers" if @announceUrlList.size == 0
+  
+      @announceUrlIndex = 0
     end
     
     attr_reader :peerId
@@ -171,23 +211,35 @@ module QuartzTorrent
       @errors
     end
 
-    # Create a new TrackerClient using the passed information. This is a factory method that will return
-    # a tracker that talks the protocol specified in the URL.
+    # Create a new TrackerClient using the passed information. The announceUrl may be a string or a list.
     def self.create(announceUrl, infoHash, dataLength = 0, start = true)
-      result = nil
-      if announceUrl =~ /udp:\/\//
-        result = UdpTrackerClient.new(announceUrl, infoHash, dataLength)
-      else
-        result = HttpTrackerClient.new(announceUrl, infoHash, dataLength)
-      end
+      result = TrackerClient.new(announceUrl, infoHash, dataLength)
       result.start if start
-
       result
     end
 
     # Create a new TrackerClient using the passed Metainfo object.
     def self.createFromMetainfo(metainfo, start = true)
-      create(metainfo.announce, metainfo.infoHash, metainfo.info.dataLength, start)
+      announce = []
+      announce.push metainfo.announce if metainfo.announce
+      announce = announce.concat(metainfo.announceList) if metainfo.announceList
+      create(announce, metainfo.infoHash, metainfo.info.dataLength, start)
+    end
+
+    # Create a TrackerDriver for the specified URL. TrackerDriver is a lower-level interface to the tracker.
+    def self.createDriver(announceUrl, infoHash)
+      result = nil
+      if announceUrl =~ /udp:\/\//
+        result = UdpTrackerDriver.new(announceUrl, infoHash)
+      else
+        result = HttpTrackerDriver.new(announceUrl, infoHash)
+      end
+      result
+    end
+
+    # Create a TrackerDriver using the passed Metainfo object. TrackerDriver is a lower-level interface to the tracker.
+    def self.createDriverFromMetainfo(metainfo)
+      TrackerClient.createDriver(metainfo.announce, metainfo.infoHash)
     end
 
     # Start the worker thread
@@ -203,17 +255,25 @@ module QuartzTorrent
         while ! @stopped
           begin
             response = nil
-            begin 
-              @logger.debug "Sending request"
-              response = request(@event)
-              @event = nil
-              trackerInterval = response.interval
-            rescue
-              addError $!
-              @logger.debug "Request failed due to exception: #{$!}"
-              @logger.debug $!.backtrace.join("\n")
 
-              @alarms.raise Alarm.new(:tracker, "Tracker request failed: #{$!}") if @alarms
+            driver = currentDriver
+
+            if driver
+              begin 
+                @logger.debug "Sending request"
+                response = driver.request(@event)
+                @event = nil
+                trackerInterval = response.interval
+              rescue
+                addError $!
+                @logger.debug "Request failed due to exception: #{$!}"
+                @logger.debug $!.backtrace.join("\n")
+                @logger.debug "Changing to different tracker"
+                @announceUrlIndex += 1
+                next
+
+                @alarms.raise Alarm.new(:tracker, "Tracker request failed: #{$!}") if @alarms
+              end
             end
 
             if response && response.successful?
@@ -239,6 +299,9 @@ module QuartzTorrent
               @logger.debug "Response was unsuccessful from tracker"
               addError response.error if response
               @alarms.raise Alarm.new(:tracker, "Unsuccessful response from tracker: #{response.error}") if @alarms && response
+              @logger.debug "Changing to different tracker"
+              @announceUrlIndex += 1
+              next
             end
 
             # If we have no interval from the tracker yet, and the last request didn't error out leaving us with no peers,
@@ -294,6 +357,17 @@ module QuartzTorrent
     def eventValid?(event)
       event == :started || event == :stopped || event == :completed
     end
+
+    def currentDriver
+      return nil if @announceUrlList.size == 0
+      @announceUrlIndex = 0 if @announceUrlIndex > @announceUrlList.size-1
+           
+      driver = TrackerClient.createDriver @announceUrlList[@announceUrlIndex], @infoHash
+      driver.dynamicRequestParamsBuilder = @dynamicRequestParamsBuilder if driver
+      driver.port = @port
+      driver.peerId = @peerId
+    end
+
   end
 
 
