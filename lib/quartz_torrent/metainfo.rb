@@ -58,6 +58,7 @@ module QuartzTorrent
         # multi-file download. For a single-file download the 
         @files = []
         @logger = LogManager.getLogger("metainfo")
+        @source = nil
       end
 
       # Array of FileInfo objects
@@ -70,6 +71,8 @@ module QuartzTorrent
       attr_accessor :pieces
       # True if no external peer source is allowed.
       attr_accessor :private
+      # Optional source
+      attr_accessor :source
 
       # Total length of the torrent data in bytes.
       def dataLength
@@ -81,6 +84,7 @@ module QuartzTorrent
         result = Info.new
         result.pieceLen = infoDict['piece length']
         result.private = infoDict['private']
+        result.source = infoDict['source']
         result.pieces = parsePieces(Metainfo.valueOrException(infoDict['pieces'], "Torrent metainfo is missing the pieces property."))
         result.name = Metainfo.valueOrException(infoDict['name'], "Torrent metainfo is missing the name property.")
 
@@ -110,6 +114,7 @@ module QuartzTorrent
 
         hash['piece length'] = @pieceLen
         hash['private'] = @private if @private
+        hash['source'] = @source if @source
         hash['name'] = @name
         hash['pieces'] = @pieces.join
 
