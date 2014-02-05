@@ -79,10 +79,12 @@ module QuartzTorrent
   def readWithTimeout(socket, length, timeout)
     rc = IO.select([socket], nil, nil, timeout)
     if ! rc
+      socket.close
       raise "Waiting for response from UDP tracker #{@host}:#{@trackerPort} timed out after #{@timeout} seconds"
     elsif rc[0].size > 0
       socket.recvfrom(length)[0]
     else
+      socket.close
       raise "Error receiving response from UDP tracker #{@host}:#{@trackerPort}"
     end
   end
