@@ -28,8 +28,9 @@ module QuartzTorrent
         event = UdpTrackerMessage::EventNone
       end
 
+      socket = UDPSocket.new
+      result = nil
       begin
-        socket = UDPSocket.new
         socket.connect @host, @trackerPort
 
         @logger.debug "Sending UDP tracker request to #{@host}:#{@trackerPort}"
@@ -55,7 +56,6 @@ module QuartzTorrent
         req.port = dynamicParams.port
         socket.send req.serialize, 0
         resp = UdpTrackerAnnounceResponse.unserialize(readWithTimeout(socket,ReceiveLength,@timeout))
-        socket.close
 
         peers = []
         resp.ips.length.times do |i|
@@ -67,26 +67,27 @@ module QuartzTorrent
 
         result = TrackerResponse.new(true, nil, peers)
         result.interval = resp.interval if resp.interval
-        result
       rescue
-        TrackerResponse.new(false, $!, [])
+        result = TrackerResponse.new(false, $!, [])
+      ensure
+        socket.close if ! socket.closed?
+      end
+      result
+    end
+
+    private
+    # Throws exception if timeout occurs
+    def readWithTimeout(socket, length, timeout)
+      rc = IO.select([socket], nil, nil, timeout)
+      if ! rc
+        raise "Waiting for response from UDP tracker #{@host}:#{@trackerPort} timed out after #{@timeout} seconds"
+      elsif rc[0].size > 0
+        socket.recvfrom(length)[0]
+      else
+        raise "Error receiving response from UDP tracker #{@host}:#{@trackerPort}"
       end
     end
   end
 
-  private
-  # Throws exception if timeout occurs
-  def readWithTimeout(socket, length, timeout)
-    rc = IO.select([socket], nil, nil, timeout)
-    if ! rc
-      socket.close
-      raise "Waiting for response from UDP tracker #{@host}:#{@trackerPort} timed out after #{@timeout} seconds"
-    elsif rc[0].size > 0
-      socket.recvfrom(length)[0]
-    else
-      socket.close
-      raise "Error receiving response from UDP tracker #{@host}:#{@trackerPort}"
-    end
-  end
 
 end
