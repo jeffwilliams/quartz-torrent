@@ -269,10 +269,9 @@ module QuartzTorrent
                 trackerInterval = response.interval
               rescue
                 addError $!
-                @logger.debug "Request failed due to exception: #{$!}"
+                @logger.info "Request failed due to exception: #{$!}"
                 @logger.debug $!.backtrace.join("\n")
-                @announceUrlIndex += 1
-                @logger.debug "Changing to different tracker"
+                changeToNextTracker
                 next
 
                 @alarms.raise Alarm.new(:tracker, "Tracker request failed: #{$!}") if @alarms
@@ -299,11 +298,10 @@ module QuartzTorrent
                 @peersChangedListeners.each{ |l| l.call }
               end
             else
-              @logger.debug "Response was unsuccessful from tracker"
+              @logger.info "Response was unsuccessful from tracker: #{response.error}"
               addError response.error if response
               @alarms.raise Alarm.new(:tracker, "Unsuccessful response from tracker: #{response.error}") if @alarms && response
-              @announceUrlIndex += 1
-              @logger.debug "Changed to next tracker #{currentAnnounceUrl}"
+              changeToNextTracker
               next
             end
 
@@ -378,6 +376,12 @@ module QuartzTorrent
       @announceUrlIndex = 0 if @announceUrlIndex > @announceUrlList.size-1
 
       @announceUrlList[@announceUrlIndex]
+    end
+
+    def changeToNextTracker
+      @announceUrlIndex += 1
+      @logger.info "Changed to next tracker #{currentAnnounceUrl}"
+      sleep 0.5
     end
 
   end
