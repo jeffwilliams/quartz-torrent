@@ -39,6 +39,7 @@ module QuartzTorrent
         req = UdpTrackerConnectRequest.new
         socket.send req.serialize, 0
         resp = UdpTrackerConnectResponse.unserialize(readWithTimeout(socket,ReceiveLength,@timeout))
+        @logger.debug "Connect response: #{resp.inspect}"
         raise "Invalid connect response: response transaction id is different from the request transaction id" if resp.transactionId != req.transactionId
         connectionId = resp.connectionId
 
@@ -56,6 +57,7 @@ module QuartzTorrent
         req.port = dynamicParams.port
         socket.send req.serialize, 0
         resp = UdpTrackerAnnounceResponse.unserialize(readWithTimeout(socket,ReceiveLength,@timeout))
+        @logger.debug "Announce response: #{resp.inspect}"
 
         peers = []
         resp.ips.length.times do |i|
