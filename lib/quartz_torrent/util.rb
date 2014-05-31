@@ -96,5 +96,43 @@ module QuartzTorrent
     Thread.current[:name] = name
   end
 
+  
+  # Return a new Class that contains the passed list of properties with associated accessors. 
+  # The new classes constructor is defined so that the properties may be optionally passed in 
+  # order to the constructor. Example of usage:
+  #
+  # MyStruct = define_struct(:foo, :bar, :bat)
+  #
+  # s1 = MyStruct.new("one","two")
+  # puts s1.foo
+  # s1.bar = "thing"
+  #
+  def self.define_struct(*accessors)
+    Class.new do
+      accessors.each{ |m|
+        # Define getter
+        define_method(m){
+          instance_variable_get("@#{m}")
+        }
+
+        # Define setter
+        define_method("#{m}="){ |val|
+          instance_variable_set("@#{m}", val)
+        }
+
+      }
+
+      # Define initialize method
+      define_method(:initialize){ |*args|
+        argIndex = 0
+        accessors.each{ |m|
+          argVal = argIndex < args.size ? args[argIndex] : nil
+          instance_variable_set("@#{m}", argVal)
+          argIndex += 1
+        }
+      }
+    end
+  end
+
 end
 
