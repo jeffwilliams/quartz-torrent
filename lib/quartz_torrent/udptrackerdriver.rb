@@ -40,7 +40,7 @@ module QuartzTorrent
         socket.send req.serialize, 0
         resp = UdpTrackerConnectResponse.unserialize(readWithTimeout(socket,ReceiveLength,@timeout))
         @logger.debug "Connect response: #{resp.inspect}"
-        raise "Invalid connect response: response transaction id is different from the request transaction id" if resp.transactionId != req.transactionId
+        raise "Invalid connect response: response transaction id #{resp.transactionId} is different from the request transaction id #{req.transactionId}" if resp.transactionId != req.transactionId
         connectionId = resp.connectionId
 
         dynamicParams = @dynamicRequestParamsBuilder.call
