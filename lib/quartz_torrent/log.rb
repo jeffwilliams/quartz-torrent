@@ -9,6 +9,7 @@ module QuartzTorrent
   class LogManager
 
     @@outputter = nil
+    @@formatter = Log4r::PatternFormatter.new(:pattern => "%d %l %m")
     @@defaultLevel = Log4r::ERROR
     @@maxOldLogs = 10
     @@maxLogSize = 1048576
@@ -45,6 +46,7 @@ module QuartzTorrent
         end
       end
       @@outputter = dest
+      @@outputter.formatter = @@formatter
     end
 
     # Set log level for the named logger. The level can be one of

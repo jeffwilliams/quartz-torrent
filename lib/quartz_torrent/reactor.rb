@@ -745,6 +745,7 @@ module QuartzTorrent
         if ioInfo.connectTimer 
           @logger.debug "cancelling connect timer for IO metainfo=#{@currentIoInfo.metainfo}" if @logger
           @timerManager.cancel ioInfo.connectTimer
+          ioInfo.connectTimer = nil
         end
         @currentHandlerCallback = :client_init
         @handler.clientInit(ioInfo.metainfo)
@@ -763,6 +764,7 @@ module QuartzTorrent
         if timer.metainfo && timer.metainfo.is_a?(InternalTimerInfo)
           if timer.metainfo.type == :connect_timeout
             @currentHandlerCallback = :error
+            @currentIoInfo = nil # In case the reactor handler calls close; we'll close the io ourself.
             @handler.error(timer.metainfo.data.metainfo, "Connection timed out")
             disposeIo(timer.metainfo.data)
           end

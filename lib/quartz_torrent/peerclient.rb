@@ -272,6 +272,7 @@ module QuartzTorrent
       @managePeersPeriod = 10 # Defined in bittorrent spec. Only unchoke peers every 10 seconds.
       @requestBlocksPeriod = 1
       @handshakeTimeout = 1
+      @connectTimeout = 5
       @requestTimeout = 60
       @endgameBlockThreshold = 20
     end
@@ -850,7 +851,7 @@ module QuartzTorrent
       toConnect = manager.manageConnections(classifiedPeers)
       toConnect.each do |peer|
         @logger.debug "#{QuartzTorrent.bytesToHex(infoHash)}: Connecting to peer #{peer}"
-        connect peer.trackerPeer.ip, peer.trackerPeer.port, peer
+        connect peer.trackerPeer.ip, peer.trackerPeer.port, peer, @connectTimeout
       end
 
       manageResult = manager.managePeers(classifiedPeers)
