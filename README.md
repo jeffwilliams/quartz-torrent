@@ -3,8 +3,7 @@ QuartzTorrent -- A Ruby Bittorrent Library
 
 [![Gem Version](https://badge.fury.io/rb/quartz_torrent.png)](http://badge.fury.io/rb/quartz\_torrent)
 
-Like the title says, a bittorrent library implemented in pure ruby. Currently 
-the library works, but is still alpha.
+Like the title says, a bittorrent library implemented in pure ruby. 
 
 Features:
 ---------
@@ -100,10 +99,6 @@ And a specific test case in a test using:
 
 To-Do
 -----
-  - Bug: Start a peerclient with the full torrent. Connect with another peerclient and start downloading, then pause.
-    Finally unpause. The "server" peerclient will refuse the connections to re-establish because it believes the
-    peer is already connected.
-  - Improve Documentation
   - Implement uTP
     - <http://www.bittorrent.org/beps/bep_0029.html#packet-sizes>
     - <https://forum.utorrent.com/viewtopic.php?id=76640>
