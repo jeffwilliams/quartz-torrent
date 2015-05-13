@@ -34,7 +34,7 @@ Gem::Specification.new do |s|
     "quartztorrent_show_info",
   ]
 
-  s.required_ruby_version = '~> 1.9'
+  s.required_ruby_version = '>= 1.9.1'
 
   s.add_runtime_dependency "bencode", '~> 0.8'
   s.add_runtime_dependency "pqueue", '~> 2.0'
