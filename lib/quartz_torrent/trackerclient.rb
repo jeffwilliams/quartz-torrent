@@ -14,6 +14,18 @@ require "thread"
 
 module QuartzTorrent
  
+  def filter_non_ascii(s)
+    r = ""
+    s.each do |c|
+      if c >= 32 && c < 128
+        r << c.chr
+      else
+        r << "?"
+      end
+    end
+    r
+  end
+
   # Represents a peer returned by the tracker
   class TrackerPeer
     def initialize(ip, port, id = nil)
@@ -29,7 +41,7 @@ module QuartzTorrent
           port << 32
 
         @displayId = nil
-        @displayId = id.gsub(/[\x80-\xff]/,'?') if id
+        @displayId = filter_non_ascii(id) if id
       else
         raise "Invalid IP address #{ip}"
       end
