@@ -329,6 +329,7 @@ module QuartzTorrent
           rescue
             @logger.warn "Unhandled exception in worker thread: #{$!}"
             @logger.warn $!.backtrace.join("\n")
+            @sleeper.sleep 1
           end
         end
         @logger.info "Worker thread shutting down"
