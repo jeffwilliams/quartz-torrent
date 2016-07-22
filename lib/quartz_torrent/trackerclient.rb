@@ -29,7 +29,7 @@ module QuartzTorrent
   # Represents a peer returned by the tracker
   class TrackerPeer
     def initialize(ip, port, id = nil)
-      if ip =~ /(\d+).(\d+).(\d+).(\d+)/
+      if ip =~ /(\d+).(\d+).(\d+).(\d+)/n
         @ip = ip
         @port = port
         @id = id
