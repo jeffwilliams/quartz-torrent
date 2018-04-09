@@ -1,3 +1,4 @@
+# encoding: US-ASCII
 require "quartz_torrent/log"
 require "quartz_torrent/metainfo"
 require "quartz_torrent/udptrackermsg"
